@@ -1,0 +1,48 @@
+{
+  "name": "@facilito/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "test:isolation": "vitest run --config vitest.isolation.config.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "db:bootstrap": "tsx src/db/bootstrap.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-pgvector": "0.0.9",
+    "@facilito/domain": "workspace:*",
+    "@facilito/verticals": "workspace:*",
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/cors": "^11.0.0",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/multipart": "^10.1.2",
+    "@fastify/rate-limit": "^10.2.2",
+    "argon2": "^0.41.1",
+    "decimal.js": "^10.5.0",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "ioredis": "^5.6.0",
+    "jose": "^6.0.10",
+    "otplib": "^12.0.1",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.14.1",
+    "sharp": "^0.35.4",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.11.11",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.11"
+  }
+}

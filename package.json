@@ -1,0 +1,36 @@
+{
+  "name": "facilito",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Facilito by Logic Code Spot — multi-tenant business administration",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:isolation": "pnpm --filter @facilito/api test:isolation",
+    "migrate": "pnpm --filter @facilito/api migrate",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "e2e:smoke": "node scripts/e2e-api-smoke.mjs",
+    "assets:login-bg": "node scripts/build-login-bg.mjs",
+    "format": "prettier --write ."
+  },
+  "pnpm": {
+    "overrides": {
+      "@xmldom/xmldom@<0.8.12": "^0.8.12",
+      "postcss@<8.5.10": "^8.5.10"
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "prettier": "^3.5.3",
+    "sharp": "^0.35.4",
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.2"
+  }
+}

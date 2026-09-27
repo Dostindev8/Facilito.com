@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: facilito
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d facilito"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_DRIVER: pg
+      DATABASE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/facilito
+      # Ephemeral CI-only database; production passwords come from the vault.
+      APP_DB_PASSWORD: facilito_app_ci_only
+      DATABASE_URL: postgres://facilito_app:facilito_app_ci_only@localhost:5432/facilito
+      REDIS_URL: redis://localhost:6379
+      FIELD_ENCRYPTION_KEY: dGVzdC1maWVsZC1lbmNyeXB0aW9uLWtleS0zMmI=
+      JWT_PRIVATE_KEY_PATH: ./secrets/jwt-private.pem
+      JWT_PUBLIC_KEY_PATH: ./secrets/jwt-public.pem
+      LLM_PROVIDER: stub
+      PSFE_PROVIDER: stub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Generate CI JWT keys
+        run: |
+          mkdir -p secrets
+          openssl genrsa -out secrets/jwt-private.pem 2048
+          openssl rsa -in secrets/jwt-private.pem -pubout -out secrets/jwt-public.pem
+      - name: Bootstrap DB roles + migrate
+        run: pnpm --filter @facilito/api db:bootstrap && pnpm --filter @facilito/api migrate
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Unit + integration tests
+        run: pnpm test
+      - name: Production build
+        run: pnpm build
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: E2E (auth, invoice → stock → void, network failure, responsive)
+        run: pnpm e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+      - name: Isolation suite (blocks merge)
+        env:
+          RUN_ISOLATION: "1"
+        run: pnpm test:isolation
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Audit (high/critical)
+        run: pnpm audit --audit-level=high

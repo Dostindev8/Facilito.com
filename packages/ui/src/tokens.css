@@ -1,0 +1,13 @@
+:root {
+  --facilito-primary: #0b7a45;
+  --facilito-primary-light: #1f9a5a;
+  --facilito-primary-dark: #064e32;
+  --facilito-accent: #f47b20;
+  --facilito-ink: #1b2838;
+  --facilito-mint-band: #e4f6f2;
+  --facilito-mint-surface: #f4fbfa;
+  --facilito-white: #ffffff;
+  --facilito-danger: #b42318;
+  --facilito-radius-md: 12px;
+  --facilito-font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}

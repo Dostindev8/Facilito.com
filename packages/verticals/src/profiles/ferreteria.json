@@ -1,0 +1,20 @@
+{
+  "id": "ferreteria",
+  "version": "1.0.0",
+  "label": "Ferretería",
+  "productAttrSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "marca": { "type": "string" },
+      "medida": { "type": "string" },
+      "material": { "type": "string" }
+    },
+    "required": ["marca"]
+  },
+  "features": {
+    "lots": false,
+    "fefo": false,
+    "barcode": true
+  }
+}

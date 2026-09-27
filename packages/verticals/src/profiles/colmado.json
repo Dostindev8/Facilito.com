@@ -1,0 +1,20 @@
+{
+  "id": "colmado",
+  "version": "1.0.0",
+  "label": "Colmado",
+  "productAttrSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "perecedero": { "type": "boolean" },
+      "dias_alerta_vencimiento": { "type": "integer", "minimum": 0 },
+      "unidad_venta": { "type": "string", "enum": ["unidad", "libra", "caja"] }
+    },
+    "required": ["perecedero"]
+  },
+  "features": {
+    "lots": true,
+    "fefo": true,
+    "barcode": true
+  }
+}

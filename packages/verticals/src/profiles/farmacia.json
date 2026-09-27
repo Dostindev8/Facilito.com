@@ -1,0 +1,20 @@
+{
+  "id": "farmacia",
+  "version": "1.0.0",
+  "label": "Farmacia",
+  "productAttrSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "requiere_receta": { "type": "boolean" },
+      "principio_activo": { "type": "string" },
+      "lote_obligatorio": { "type": "boolean", "const": true }
+    },
+    "required": ["requiere_receta", "lote_obligatorio"]
+  },
+  "features": {
+    "lots": true,
+    "fefo": true,
+    "barcode": true
+  }
+}
