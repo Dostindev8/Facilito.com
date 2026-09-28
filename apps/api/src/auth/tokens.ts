@@ -14,9 +14,16 @@ let publicKey: JwtKey | null = null;
 async function loadKeys(): Promise<{ privateKey: JwtKey; publicKey: JwtKey }> {
   if (privateKey && publicKey) return { privateKey, publicKey };
   const env = getEnv();
+  if (env.JWT_PRIVATE_KEY && env.JWT_PUBLIC_KEY) {
+    // Hosts that only offer single-line env vars store the PEM with literal "\n".
+    const pem = (v: string) => v.replace(/\\n/g, '\n');
+    privateKey = await importPKCS8(pem(env.JWT_PRIVATE_KEY), 'RS256');
+    publicKey = await importSPKI(pem(env.JWT_PUBLIC_KEY), 'RS256');
+    return { privateKey, publicKey };
+  }
   if (!existsSync(env.JWT_PRIVATE_KEY_PATH) || !existsSync(env.JWT_PUBLIC_KEY_PATH)) {
     if (env.NODE_ENV === 'production') {
-      throw new Error('JWT key files are required in production');
+      throw new Error('JWT keys are required in production (JWT_PRIVATE_KEY/JWT_PUBLIC_KEY or key files)');
     }
     const pair = await generateKeyPair('RS256');
     privateKey = pair.privateKey;

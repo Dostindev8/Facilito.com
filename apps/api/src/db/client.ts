@@ -37,7 +37,7 @@ async function applySession(q: Queryable, options: TxOptions): Promise<void> {
 }
 
 function pgDriver(connectionString: string): Driver {
-  const pool = new pg.Pool({ connectionString, max: 10 });
+  const pool = new pg.Pool({ connectionString, max: getEnv().DATABASE_POOL_MAX });
   return {
     async tx(options, fn) {
       const client = await pool.connect();
@@ -160,7 +160,7 @@ export function getDriver(): Promise<Driver> {
     driverPromise =
       env.DATABASE_DRIVER === 'pglite'
         ? pgliteDriver(env.PGLITE_DATA_DIR || undefined)
-        : Promise.resolve(pgDriver(env.DATABASE_URL));
+        : Promise.resolve(pgDriver(env.APP_DATABASE_URL || env.DATABASE_URL));
   }
   return driverPromise;
 }

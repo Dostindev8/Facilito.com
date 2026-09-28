@@ -17,11 +17,16 @@ const envSchema = z.object({
   API_HOST: z.string().default('127.0.0.1'),
   DATABASE_DRIVER: z.enum(['pg', 'pglite']).default('pglite'),
   DATABASE_URL: z.string().default(''),
+  // Takes precedence over DATABASE_URL, which managed Postgres integrations bind to the owner role (RLS-exempt).
+  APP_DATABASE_URL: z.string().default(''),
   DATABASE_ADMIN_URL: z.string().optional(),
+  DATABASE_POOL_MAX: z.coerce.number().int().positive().default(10),
   PGLITE_DATA_DIR: z.string().default('./.data/pglite'),
   REDIS_URL: z.string().default(''),
   JWT_PRIVATE_KEY_PATH: z.string().default('./secrets/jwt-private.pem'),
   JWT_PUBLIC_KEY_PATH: z.string().default('./secrets/jwt-public.pem'),
+  JWT_PRIVATE_KEY: z.string().default(''),
+  JWT_PUBLIC_KEY: z.string().default(''),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   JWT_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(2_592_000),
   FIELD_ENCRYPTION_KEY: z.string().min(16),
@@ -58,8 +63,8 @@ export function getEnv(): AppEnv {
   if (!parsed.success) {
     throw new Error(`Invalid environment: ${parsed.error.issues.map((i) => i.path.join('.')).join(', ')}`);
   }
-  if (parsed.data.DATABASE_DRIVER === 'pg' && !parsed.data.DATABASE_URL) {
-    throw new Error('DATABASE_URL is required when DATABASE_DRIVER=pg');
+  if (parsed.data.DATABASE_DRIVER === 'pg' && !parsed.data.APP_DATABASE_URL && !parsed.data.DATABASE_URL) {
+    throw new Error('APP_DATABASE_URL or DATABASE_URL is required when DATABASE_DRIVER=pg');
   }
   if (parsed.data.NODE_ENV === 'production' && !parsed.data.COOKIE_SECURE) {
     throw new Error('COOKIE_SECURE must be true in production');

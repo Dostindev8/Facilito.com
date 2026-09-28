@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { Money, newUuidsV7 } from '@facilito/domain';
@@ -758,14 +758,11 @@ export async function setProductImage(tenantId: string, authorId: string, produc
         : 'Solo se aceptan imágenes PNG, JPG o WebP válidas.';
     throw new AppError(400, 'Imagen inválida', detail, 'image');
   }
-  const file = imagePath(tenantId, clean.hash);
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, clean.bytes);
   return withTenant(tenantId, async (q) => {
     await fetchProduct(q, tenantId, productoId);
     await q.query(
-      `UPDATE app.producto SET imagen_hash=$3, imagen_mime=$4, updated_at=now() WHERE tenant_id=$1 AND id=$2`,
-      [tenantId, productoId, clean.hash, clean.mime],
+      `UPDATE app.producto SET imagen_hash=$3, imagen_mime=$4, imagen_data=$5, updated_at=now() WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, productoId, clean.hash, clean.mime, clean.bytes],
     );
     await appendAudit(q, {
       tenantId,
@@ -782,13 +779,14 @@ export async function setProductImage(tenantId: string, authorId: string, produc
 
 export async function getProductImage(tenantId: string, productoId: string): Promise<{ bytes: Buffer; mime: string } | null> {
   const row = await withTenant(tenantId, async (q) => {
-    const r = await q.query<{ imagen_hash: string | null; imagen_mime: string | null }>(
-      'SELECT imagen_hash, imagen_mime FROM app.producto WHERE tenant_id=$1 AND id=$2',
+    const r = await q.query<{ imagen_hash: string | null; imagen_mime: string | null; imagen_data: Buffer | Uint8Array | null }>(
+      'SELECT imagen_hash, imagen_mime, imagen_data FROM app.producto WHERE tenant_id=$1 AND id=$2',
       [tenantId, productoId],
     );
     return r.rows[0];
   });
   if (!row?.imagen_hash) return null;
+  if (row.imagen_data) return { bytes: Buffer.from(row.imagen_data), mime: row.imagen_mime ?? 'image/webp' };
   try {
     return { bytes: await readFile(imagePath(tenantId, row.imagen_hash)), mime: row.imagen_mime ?? 'image/webp' };
   } catch {
