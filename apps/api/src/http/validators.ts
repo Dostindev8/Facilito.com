@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { businessTypeError, normalizeBusinessType, parseInstagram } from '@facilito/domain';
 
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
@@ -56,6 +57,29 @@ export const documentoDo = z
   .transform((s) => (s == null || s.trim() === '' ? null : s.replace(/[\s-]/g, '')))
   // TODO: VERIFICAR EN VIVO — dígito verificador de RNC/cédula DGII.
   .pipe(z.string().regex(/^\d{9}$|^\d{11}$/, 'RNC (9 dígitos) o cédula (11 dígitos)').nullable());
+
+/** Free-text business type (2–60, letters/numbers/accents/&/-/.), normalized. Rules shared with the web form. */
+export const businessTypeField = z
+  .string({ invalid_type_error: 'Debe ser texto' })
+  .max(200, 'Máximo 60 caracteres')
+  .superRefine((v, ctx) => {
+    const error = businessTypeError(v);
+    if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error });
+  })
+  .transform(normalizeBusinessType);
+
+/** Optional Instagram handle or profile URL → lowercase handle or null. */
+export const instagramField = z
+  .union([z.string().max(200, 'Enlace demasiado largo'), z.null()])
+  .optional()
+  .transform((v, ctx) => {
+    const r = parseInstagram(v);
+    if (!r.ok) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: r.error });
+      return z.NEVER;
+    }
+    return r.handle;
+  });
 
 export const uuidParam = z.object({ id: z.string().uuid('Identificador inválido') });
 

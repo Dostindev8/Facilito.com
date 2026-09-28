@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { createProductViaUi, registerSession } from './helpers';
 
 const WIDTHS = [320, 375, 768, 1024, 1440, 1920] as const;
-const PAGES = ['/inicio', '/inventario', '/facturacion', '/facturacion/nueva', '/ventas', '/clientes', '/reportes', '/configuracion', '/notificaciones'] as const;
+const PAGES = ['/inicio', '/inventario', '/facturacion', '/facturacion/nueva', '/ventas', '/clientes', '/reportes', '/configuracion', '/configuracion?tab=cuenta', '/configuracion?tab=seguridad', '/notificaciones'] as const;
 const SHOTS = process.env.E2E_SCREENSHOTS === '1';
 const shot = (name: string) => path.join(__dirname, '..', 'test-results', 'shots', `${name}.png`);
 
@@ -44,18 +44,24 @@ test('panel sin desbordamiento horizontal en todos los breakpoints', async ({ pa
   test.setTimeout(240_000);
   await registerSession(page, 'resp');
   await createProductViaUi(page, { nombre: 'Refresco Rojo 2 litros edición especial', costo: '60', precio: '95', stock: '2' });
+  const pageErrors: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') pageErrors.push(msg.text());
+  });
 
   for (const route of PAGES) {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(route);
     await expect(page.locator('main#main')).toBeVisible();
     await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Algo salió mal'), `${route} cayó al error boundary: ${pageErrors.join(' | ')}`).toHaveCount(0);
     for (const w of WIDTHS) {
       await page.setViewportSize({ width: w, height: 900 });
       await page.waitForTimeout(400);
       const o = await overflow(page);
       expect(o.scroll, `${route} @${w}px: ${o.offenders.join(', ')}`).toBeLessThanOrEqual(o.vw);
-      if (SHOTS) await page.screenshot({ path: shot(`${route.replace(/\//g, '_').slice(1)}-${w}`), fullPage: true });
+      if (SHOTS) await page.screenshot({ path: shot(`${route.replace(/[/?=]/g, '_').slice(1)}-${w}`), fullPage: true });
     }
   }
 });

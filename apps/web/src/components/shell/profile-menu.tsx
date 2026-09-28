@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useState } from 'react';
-import { Building2, ChevronDown, LogOut, Settings } from 'lucide-react';
+import { Building2, ChevronDown, LogOut, Settings, UserRound } from 'lucide-react';
 import type { SessionUser } from '@/lib/api';
 import { errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -70,6 +70,9 @@ export function ProfileMenu({ user }: { user: SessionUser }) {
                   ))}
               </>
             )}
+            <Link href="/configuracion?tab=cuenta" role="menuitem" className="dropdown-item" onClick={close}>
+              <UserRound size={17} aria-hidden /> Mi cuenta
+            </Link>
             <Link href="/configuracion" role="menuitem" className="dropdown-item" onClick={close}>
               <Settings size={17} aria-hidden /> Configuración
             </Link>

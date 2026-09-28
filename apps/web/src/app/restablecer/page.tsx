@@ -68,7 +68,7 @@ export default function ResetPage() {
           </span>
         </div>
       ) : (
-        <form className="auth-form" onSubmit={submit} noValidate>
+        <form method="post" className="auth-form" onSubmit={submit} noValidate>
           {error && (
             <div className="form-alert" role="alert">
               <TriangleAlert size={18} /> <span>{error}</span>

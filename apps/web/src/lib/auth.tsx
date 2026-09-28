@@ -23,7 +23,8 @@ interface AuthContextValue {
     password: string;
     razonSocial: string;
     rnc: string;
-    vertical: string;
+    tipoNegocio: string;
+    instagram?: string;
     recordarme: boolean;
   }) => Promise<SessionUser>;
   logout: () => Promise<void>;

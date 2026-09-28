@@ -38,7 +38,7 @@ jobs:
       APP_DB_PASSWORD: facilito_app_ci_only
       DATABASE_URL: postgres://facilito_app:facilito_app_ci_only@localhost:5432/facilito
       REDIS_URL: redis://localhost:6379
-      FIELD_ENCRYPTION_KEY: dGVzdC1maWVsZC1lbmNyeXB0aW9uLWtleS0zMmI=
+      FIELD_ENCRYPTION_KEY: dGVzdC1maWVsZC1lbmNyeXB0aW9uLWtleS0zMmI= # gitleaks:allow CI-only dummy ("test-field-encryption-key-32b")
       JWT_PRIVATE_KEY_PATH: ./secrets/jwt-private.pem
       JWT_PUBLIC_KEY_PATH: ./secrets/jwt-public.pem
       LLM_PROVIDER: stub

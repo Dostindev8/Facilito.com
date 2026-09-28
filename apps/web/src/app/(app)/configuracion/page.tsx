@@ -2,15 +2,19 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
-import { CircleCheck, Info, Save, ShieldCheck, TriangleAlert } from 'lucide-react';
-import { api, errorMessage } from '@/lib/api';
+import { CircleCheck, Info, KeyRound, Mail, Save, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { businessTypeError, parseInstagram } from '@facilito/domain/business-profile';
+import { ApiError, api, errorMessage, refreshSession } from '@/lib/api';
 import { ROLES, useAuth } from '@/lib/auth';
 import { useAsync } from '@/lib/hooks';
-import { ErrorState, SelectInput, Skeleton, Spinner, Tabs, TextInput, fieldErrorMap } from '@/components/ui/primitives';
+import { PasswordInput, StrengthMeter } from '@/components/auth/password-input';
+import { BusinessTypeField, InstagramField } from '@/components/ui/business-fields';
+import { ConfirmDialog, ErrorState, SelectInput, Skeleton, Spinner, Tabs, TextInput, fieldErrorMap } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import type { BusinessSettings, NcfConfig } from '@/components/invoices/types';
 
-type Tab = 'negocio' | 'facturacion' | 'comprobantes' | 'seguridad';
+type Tab = 'negocio' | 'cuenta' | 'facturacion' | 'comprobantes' | 'seguridad';
+const TABS: Tab[] = ['negocio', 'cuenta', 'facturacion', 'comprobantes', 'seguridad'];
 
 function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
@@ -21,30 +25,74 @@ function Switch({ checked, onChange, label, disabled }: { checked: boolean; onCh
   );
 }
 
-function BusinessTab({ s, onSaved, readOnly }: { s: BusinessSettings; onSaved: (s: BusinessSettings) => void; readOnly: boolean }) {
+const rncDigits = (v: string) => v.replace(/[\s-]/g, '');
+
+function BusinessTab({ s, onSaved, readOnly, owner }: { s: BusinessSettings; onSaved: (s: BusinessSettings) => void; readOnly: boolean; owner: boolean }) {
   const toast = useToast();
-  const [form, setForm] = useState({ nombreComercial: s.nombreComercial, direccion: s.direccion ?? '', ubicacion: s.ubicacion, telefono: s.telefono ?? '', email: s.email ?? '' });
+  const [form, setForm] = useState({
+    razonSocial: s.razonSocial,
+    rnc: s.rnc ?? '',
+    tipoNegocio: s.tipoNegocio,
+    instagram: s.instagram?.handle ?? '',
+    nombreComercial: s.nombreComercial,
+    direccion: s.direccion ?? '',
+    ubicacion: s.ubicacion,
+    telefono: s.telefono ?? '',
+    email: s.email ?? '',
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [confirmRnc, setConfirmRnc] = useState<string | null>(null);
+  const setFieldError = (field: string, message: string | undefined) =>
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (message) next[field] = message;
+      else delete next[field];
+      return next;
+    });
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const validate = () => {
+    const errs: Record<string, string> = {};
+    if (form.razonSocial.trim().length < 2) errs.razonSocial = 'Escribe la razón social';
+    const tipoErr = businessTypeError(form.tipoNegocio);
+    if (tipoErr) errs.tipoNegocio = tipoErr;
+    const ig = parseInstagram(form.instagram);
+    if (!ig.ok) errs.instagram = ig.error;
+    const rnc = rncDigits(form.rnc);
+    if (owner && rnc !== rncDigits(s.rnc ?? '') && !/^(\d{9}|\d{11})$/.test(rnc)) errs.rnc = 'El RNC debe tener 9 dígitos (o 11 si es cédula)';
+    return errs;
+  };
+
+  const save = async (confirmRncChange = false) => {
     setBusy(true);
-    setErrors({});
     try {
-      const r = await api<BusinessSettings>('/v1/settings', {
-        method: 'PATCH',
-        body: {
-          nombreComercial: form.nombreComercial.trim(),
-          direccion: form.direccion.trim() || null,
-          ubicacion: form.ubicacion.trim(),
-          telefono: form.telefono.trim() || null,
-          email: form.email.trim() || null,
-        },
-      });
+      const ig = parseInstagram(form.instagram);
+      const body: Record<string, unknown> = {
+        razonSocial: form.razonSocial.trim(),
+        tipoNegocio: form.tipoNegocio,
+        nombreComercial: form.nombreComercial.trim(),
+        direccion: form.direccion.trim() || null,
+        ubicacion: form.ubicacion.trim(),
+        telefono: form.telefono.trim() || null,
+        email: form.email.trim() || null,
+      };
+      if (ig.ok && ig.handle !== (s.instagram?.handle ?? null)) body.instagram = ig.handle;
+      const rnc = rncDigits(form.rnc);
+      if (owner && rnc !== rncDigits(s.rnc ?? '')) {
+        body.rnc = rnc;
+        if (confirmRncChange) body.confirmRncChange = true;
+      }
+      const r = await api<BusinessSettings>('/v1/settings', { method: 'PATCH', body });
+      setConfirmRnc(null);
       onSaved(r);
+      setForm((f) => ({ ...f, rnc: r.rnc ?? '', instagram: r.instagram?.handle ?? '', tipoNegocio: r.tipoNegocio }));
       toast.success('Datos del negocio guardados');
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'rnc_confirm_required') {
+        setConfirmRnc(err.detail);
+        return;
+      }
+      setConfirmRnc(null);
       setErrors(fieldErrorMap(err));
       toast.error('No se pudo guardar', errorMessage(err));
     } finally {
@@ -52,11 +100,36 @@ function BusinessTab({ s, onSaved, readOnly }: { s: BusinessSettings; onSaved: (
     }
   };
 
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const errs = validate();
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+    void save();
+  };
+
   return (
     <form className="card stack" onSubmit={submit} noValidate>
       <div className="form-grid">
-        <TextInput label="Razón social" value={s.razonSocial} disabled hint="Registrada al crear la cuenta" />
-        <TextInput label="RNC" value={s.rnc ?? '—'} disabled hint="Se guarda cifrado" />
+        <TextInput label="Razón social" value={form.razonSocial} onChange={(e) => setForm({ ...form, razonSocial: e.target.value })} maxLength={200} error={errors.razonSocial} disabled={readOnly} />
+        <TextInput
+          label="RNC"
+          inputMode="numeric"
+          value={form.rnc}
+          onChange={(e) => setForm({ ...form, rnc: e.target.value.replace(/[^\d-\s]/g, '') })}
+          maxLength={13}
+          error={errors.rnc}
+          hint="Se guarda cifrado. Solo el dueño puede cambiarlo."
+          disabled={readOnly || !owner}
+        />
+        <BusinessTypeField value={form.tipoNegocio} onChange={(v) => setForm({ ...form, tipoNegocio: v })} error={errors.tipoNegocio} disabled={readOnly} />
+        <InstagramField
+          value={form.instagram}
+          onChange={(v) => setForm({ ...form, instagram: v })}
+          onError={(m) => setFieldError('instagram', m)}
+          error={errors.instagram}
+          disabled={readOnly}
+        />
         <TextInput label="Nombre comercial" value={form.nombreComercial} onChange={(e) => setForm({ ...form, nombreComercial: e.target.value })} maxLength={200} error={errors.nombreComercial} disabled={readOnly} />
         <TextInput label="Ubicación" value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} maxLength={120} error={errors.ubicacion} disabled={readOnly} />
         <TextInput label="Dirección" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} maxLength={300} error={errors.direccion} className="span-2" disabled={readOnly} />
@@ -70,6 +143,195 @@ function BusinessTab({ s, onSaved, readOnly }: { s: BusinessSettings; onSaved: (
           </button>
         </div>
       )}
+      <ConfirmDialog
+        open={confirmRnc !== null}
+        title="¿Cambiar el RNC del negocio?"
+        message={
+          <>
+            <p>{confirmRnc}</p>
+            <p className="muted">Las facturas ya emitidas conservan el RNC con el que salieron. Las nuevas usarán el RNC nuevo. Confirma con tu contador antes de continuar.</p>
+          </>
+        }
+        confirmLabel="Sí, cambiar RNC"
+        tone="danger"
+        busy={busy}
+        onConfirm={() => void save(true)}
+        onClose={() => setConfirmRnc(null)}
+      />
+    </form>
+  );
+}
+
+interface MeInfo {
+  nombre: string;
+  email: string;
+  pendingEmail: string | null;
+  totpEnabled: boolean;
+}
+
+function AccountTab() {
+  const toast = useToast();
+  const me = useAsync(() => api<MeInfo>('/v1/me'), []);
+  const [nombre, setNombre] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | undefined>();
+  const [savingName, setSavingName] = useState(false);
+  const [email, setEmail] = useState({ newEmail: '', password: '' });
+  const [emailErrors, setEmailErrors] = useState<Record<string, string>>({});
+  const [savingEmail, setSavingEmail] = useState(false);
+
+  if (me.error) return <div className="card"><ErrorState error={me.error} onRetry={me.reload} /></div>;
+  if (!me.data) return <Skeleton h={260} r={16} />;
+  const current = nombre ?? me.data.nombre;
+
+  const saveName = async (e: FormEvent) => {
+    e.preventDefault();
+    if (current.trim().length < 2) {
+      setNameError('Escribe tu nombre');
+      return;
+    }
+    setNameError(undefined);
+    setSavingName(true);
+    try {
+      await api('/v1/me', { method: 'PATCH', body: { nombre: current.trim() } });
+      await refreshSession();
+      me.reload();
+      setNombre(null);
+      toast.success('Nombre actualizado');
+    } catch (err) {
+      setNameError(fieldErrorMap(err).nombre);
+      toast.error('No se pudo guardar', errorMessage(err));
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const requestEmail = async (e: FormEvent) => {
+    e.preventDefault();
+    const errs: Record<string, string> = {};
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.newEmail.trim())) errs.newEmail = 'Escribe un correo válido';
+    if (!email.password) errs.password = 'Escribe tu contraseña actual';
+    setEmailErrors(errs);
+    if (Object.keys(errs).length) return;
+    setSavingEmail(true);
+    try {
+      await api('/v1/auth/email-change', { method: 'POST', body: { newEmail: email.newEmail.trim(), password: email.password } });
+      setEmail({ newEmail: '', password: '' });
+      me.reload();
+      toast.success('Revisa tu correo nuevo', 'Te enviamos un enlace para confirmar el cambio.');
+    } catch (err) {
+      setEmailErrors(fieldErrorMap(err));
+      toast.error('No se pudo solicitar el cambio', errorMessage(err));
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const cancelEmail = async () => {
+    setSavingEmail(true);
+    try {
+      await api('/v1/auth/email-change', { method: 'DELETE' });
+      me.reload();
+      toast.success('Cambio de correo cancelado');
+    } catch (err) {
+      toast.error('No se pudo cancelar', errorMessage(err));
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  return (
+    <div className="settings-grid">
+      <form className="card stack" onSubmit={saveName} noValidate>
+        <div className="card-header" style={{ marginBottom: 0 }}>
+          <h2>Tus datos</h2>
+        </div>
+        <TextInput label="Nombre completo" autoComplete="name" value={current} onChange={(e) => setNombre(e.target.value)} maxLength={120} error={nameError} />
+        <div>
+          <button type="submit" className="btn btn-primary" disabled={savingName || current.trim() === me.data.nombre}>
+            {savingName ? <Spinner size={16} /> : <Save size={18} />} Guardar
+          </button>
+        </div>
+      </form>
+      <form method="post" className="card stack" onSubmit={requestEmail} noValidate>
+        <div className="card-header" style={{ marginBottom: 0 }}>
+          <h2>Correo de acceso</h2>
+        </div>
+        <p className="muted" style={{ margin: 0 }}>
+          Correo actual: <strong>{me.data.email}</strong>
+        </p>
+        {me.data.pendingEmail && (
+          <div className="form-alert info" role="status">
+            <Mail size={18} />
+            <span>
+              Esperando confirmación de <strong>{me.data.pendingEmail}</strong>. Hasta que la confirmes, sigues entrando con tu correo actual.{' '}
+              <button type="button" className="link-btn" onClick={cancelEmail} disabled={savingEmail}>
+                Cancelar cambio
+              </button>
+            </span>
+          </div>
+        )}
+        <TextInput label="Correo nuevo" type="email" autoComplete="email" value={email.newEmail} onChange={(e) => setEmail({ ...email, newEmail: e.target.value })} maxLength={320} error={emailErrors.newEmail} />
+        <PasswordInput label="Contraseña actual" autoComplete="current-password" value={email.password} onChange={(e) => setEmail({ ...email, password: e.target.value })} maxLength={128} error={emailErrors.password} />
+        <div>
+          <button type="submit" className="btn btn-primary" disabled={savingEmail}>
+            {savingEmail ? <Spinner size={16} /> : <Mail size={18} />} Enviar enlace de confirmación
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function PasswordCard() {
+  const toast = useToast();
+  const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const errs: Record<string, string> = {};
+    if (!form.currentPassword) errs.currentPassword = 'Escribe tu contraseña actual';
+    if (form.newPassword.length < 10 || !/[A-Za-z]/.test(form.newPassword) || !/\d/.test(form.newPassword)) errs.newPassword = 'Mínimo 10 caracteres, con letras y números';
+    else if (form.newPassword === form.currentPassword) errs.newPassword = 'La contraseña nueva debe ser distinta a la actual';
+    if (form.confirm !== form.newPassword) errs.confirm = 'Las contraseñas no coinciden';
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+    setBusy(true);
+    try {
+      await api('/v1/auth/password', { method: 'POST', body: { currentPassword: form.currentPassword, newPassword: form.newPassword } });
+      setForm({ currentPassword: '', newPassword: '', confirm: '' });
+      toast.success('Contraseña actualizada', 'Cerramos tus sesiones en otros dispositivos.');
+    } catch (err) {
+      setErrors(fieldErrorMap(err));
+      toast.error('No se pudo cambiar la contraseña', errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form method="post" className="card stack" style={{ maxWidth: 640 }} onSubmit={submit} noValidate>
+      <div className="row">
+        <span className="kpi-icon tone-green" style={{ width: 44, height: 44 }}>
+          <KeyRound size={22} aria-hidden />
+        </span>
+        <div>
+          <strong>Cambiar contraseña</strong>
+          <p className="muted" style={{ fontSize: '0.88rem' }}>Al cambiarla cerramos tus sesiones en otros dispositivos; esta sigue abierta.</p>
+        </div>
+      </div>
+      <PasswordInput label="Contraseña actual" autoComplete="current-password" value={form.currentPassword} onChange={(e) => setForm({ ...form, currentPassword: e.target.value })} maxLength={128} error={errors.currentPassword} />
+      <div className="stack" style={{ gap: 8 }}>
+        <PasswordInput label="Contraseña nueva" autoComplete="new-password" value={form.newPassword} onChange={(e) => setForm({ ...form, newPassword: e.target.value })} maxLength={128} error={errors.newPassword} />
+        <StrengthMeter value={form.newPassword} />
+      </div>
+      <PasswordInput label="Confirmar contraseña nueva" autoComplete="new-password" value={form.confirm} onChange={(e) => setForm({ ...form, confirm: e.target.value })} maxLength={128} error={errors.confirm} />
+      <div>
+        <button type="submit" className="btn btn-primary" disabled={busy}>
+          {busy ? <Spinner size={16} /> : <KeyRound size={18} />} Cambiar contraseña
+        </button>
+      </div>
     </form>
   );
 }
@@ -334,6 +596,8 @@ function SecurityTab() {
   if (!me.data) return <Skeleton h={160} />;
 
   return (
+    <>
+    <PasswordCard />
     <section className="card stack" style={{ maxWidth: 640 }}>
       <div className="row">
         <span className="kpi-icon tone-green" style={{ width: 44, height: 44 }}>
@@ -349,7 +613,7 @@ function SecurityTab() {
           <CircleCheck size={18} /> <span>La verificación en dos pasos está activa para {me.data.email}.</span>
         </div>
       ) : setup ? (
-        <form className="stack" onSubmit={verify} noValidate>
+        <form method="post" className="stack" onSubmit={verify} noValidate>
           <ol style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 8 }}>
             <li>Abre Google Authenticator, Microsoft Authenticator o similar.</li>
             <li>
@@ -386,17 +650,24 @@ function SecurityTab() {
         </div>
       )}
     </section>
+    </>
   );
 }
 
 function SettingsView() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const initial = (['negocio', 'facturacion', 'comprobantes', 'seguridad'].includes(params.get('tab') ?? '') ? params.get('tab') : 'negocio') as Tab;
+  const initial = (TABS.includes(params.get('tab') as Tab) ? params.get('tab') : 'negocio') as Tab;
   const [tab, setTab] = useState<Tab>(initial);
   const admin = can(ROLES.admin);
+  const personal = tab === 'seguridad' || tab === 'cuenta';
+  const tabParam = params.get('tab');
+
+  useEffect(() => {
+    if (TABS.includes(tabParam as Tab)) setTab(tabParam as Tab);
+  }, [tabParam]);
   const data = useAsync(() => Promise.all([api<BusinessSettings>('/v1/settings'), api<NcfConfig>('/v1/settings/ncf')]), []);
   const [settings, setSettings] = useState<BusinessSettings | null>(null);
 
@@ -414,7 +685,7 @@ function SettingsView() {
       <div className="page-head">
         <div>
           <h1>Configuración</h1>
-          <p>Datos del negocio, facturación, comprobantes fiscales y seguridad.</p>
+          <p>Datos del negocio, tu cuenta, facturación, comprobantes fiscales y seguridad.</p>
         </div>
       </div>
       <Tabs<Tab>
@@ -423,18 +694,21 @@ function SettingsView() {
         onChange={changeTab}
         items={[
           { value: 'negocio', label: 'Negocio' },
+          { value: 'cuenta', label: 'Mi cuenta' },
           { value: 'facturacion', label: 'Facturación' },
           { value: 'comprobantes', label: 'Comprobantes (NCF)' },
           { value: 'seguridad', label: 'Seguridad' },
         ]}
       />
-      {!admin && tab !== 'seguridad' && (
+      {!admin && !personal && (
         <div className="form-alert info">
           <Info size={18} /> <span>Solo el dueño o el gerente pueden cambiar esta configuración.</span>
         </div>
       )}
       {tab === 'seguridad' ? (
         <SecurityTab />
+      ) : tab === 'cuenta' ? (
+        <AccountTab />
       ) : data.error ? (
         <div className="card">
           <ErrorState error={data.error} onRetry={data.reload} />
@@ -442,7 +716,7 @@ function SettingsView() {
       ) : !settings || !data.data ? (
         <Skeleton h={300} r={16} />
       ) : tab === 'negocio' ? (
-        <BusinessTab s={settings} onSaved={setSettings} readOnly={!admin} />
+        <BusinessTab s={settings} onSaved={setSettings} readOnly={!admin} owner={user?.rol === 'owner'} />
       ) : tab === 'facturacion' ? (
         <InvoicingTab s={settings} ncf={data.data[1]} onSaved={setSettings} readOnly={!admin} />
       ) : (

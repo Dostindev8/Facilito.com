@@ -62,6 +62,13 @@ export interface BusinessSettings {
   sujetoDgii: boolean;
   permiteStockNegativo: boolean;
   verticales: string[];
+  tipoNegocio: string;
+  instagram: {
+    handle: string;
+    url: string;
+    connected: boolean;
+    lastSyncedAt: string | null;
+  } | null;
 }
 
 export interface NcfSequence {

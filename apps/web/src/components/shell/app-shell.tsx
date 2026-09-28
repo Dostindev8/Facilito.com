@@ -5,8 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Menu, WifiOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useOnline } from '@/lib/hooks';
-import { LogoMark } from '@/components/brand/logo';
-import { Spinner } from '@/components/ui/primitives';
+import { AppLoadingLogo } from '@/components/brand/app-loading-logo';
 import { Sidebar } from './sidebar';
 import { SearchBox } from './search-box';
 import { NotificationsMenu } from './notifications';
@@ -41,14 +40,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [drawer]);
 
   if (status !== 'authenticated' || !user) {
-    return (
-      <div className="boot">
-        <div>
-          <LogoMark size={56} priority />
-          <Spinner size={22} label="Cargando tu negocio" />
-        </div>
-      </div>
-    );
+    return <AppLoadingLogo screen label="Cargando tu negocio…" />;
   }
 
   return (
@@ -81,7 +73,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main id="main" className="content" key={user.tenantId}>
-          {children}
+          <div key={pathname} className="route-fade">
+            {children}
+          </div>
         </main>
         <footer className="app-footer">Facilito by Logic Code Spot · v{APP_VERSION}</footer>
       </div>

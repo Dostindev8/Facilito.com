@@ -1,10 +1,18 @@
 import { z } from 'zod';
-import type { RoleCode } from '@facilito/domain';
+import { instagramUrl, resolveBusinessType, type RoleCode } from '@facilito/domain';
 import { withTenant, type Queryable } from '../db/client.js';
 import { appendAudit } from '../audit/append.js';
 import { AppError } from '../http/errors.js';
-import { optionalEmail, optionalPhone, optionalText, safeText } from '../http/validators.js';
-import { decryptFieldSafe } from '../utils/crypto.js';
+import { businessTypeField, instagramField, optionalEmail, optionalPhone, optionalText, safeText } from '../http/validators.js';
+import { decryptFieldSafe, encryptField, hashRnc } from '../utils/crypto.js';
+
+export interface InstagramProfile {
+  handle: string;
+  url: string;
+  /** True only once the business authorizes Meta OAuth (not implemented yet — see getInstagramBusinessProfile). */
+  connected: boolean;
+  lastSyncedAt: string | null;
+}
 
 export interface BusinessSettings {
   id: string;
@@ -22,6 +30,8 @@ export interface BusinessSettings {
   sujetoDgii: boolean;
   permiteStockNegativo: boolean;
   verticales: string[];
+  tipoNegocio: string;
+  instagram: InstagramProfile | null;
 }
 
 export function formatRnc(rnc: string | null): string | null {
@@ -48,10 +58,15 @@ export async function loadBusiness(q: Queryable, tenantId: string): Promise<Busi
     sujeto_dgii: boolean;
     allow_negative_stock: boolean;
     verticales: string[];
+    tipo_negocio: string | null;
+    instagram_handle: string | null;
+    instagram_connected: boolean;
+    instagram_last_synced_at: Date | string | null;
   }>(
     `SELECT id, razon_social, nombre_comercial, rnc_enc, direccion, ubicacion, telefono, email, estado,
             itbis_modo, trim_scale(itbis_tasa)::text AS itbis_tasa, ncf_tipo_default, sujeto_dgii,
-            allow_negative_stock, verticales
+            allow_negative_stock, verticales, tipo_negocio, instagram_handle, instagram_connected,
+            instagram_last_synced_at
        FROM app.negocio WHERE id = $1`,
     [tenantId],
   );
@@ -73,6 +88,15 @@ export async function loadBusiness(q: Queryable, tenantId: string): Promise<Busi
     sujetoDgii: n.sujeto_dgii,
     permiteStockNegativo: n.allow_negative_stock,
     verticales: Array.isArray(n.verticales) ? n.verticales : [],
+    tipoNegocio: n.tipo_negocio ?? resolveBusinessType(undefined, n.verticales?.[0]).tipoNegocio,
+    instagram: n.instagram_handle
+      ? {
+          handle: n.instagram_handle,
+          url: instagramUrl(n.instagram_handle),
+          connected: n.instagram_connected,
+          lastSyncedAt: n.instagram_last_synced_at ? new Date(n.instagram_last_synced_at).toISOString() : null,
+        }
+      : null,
   };
 }
 
@@ -91,7 +115,18 @@ export async function getSettings(tenantId: string, rol: RoleCode) {
 
 export const updateSettingsSchema = z
   .object({
+    razonSocial: safeText(2, 200).optional(),
     nombreComercial: safeText(2, 200).optional(),
+    tipoNegocio: businessTypeField.optional(),
+    instagram: instagramField,
+    rnc: z
+      .string()
+      .transform((s) => s.replace(/[\s-]/g, ''))
+      // TODO: VERIFICAR EN VIVO — dígito verificador de RNC/cédula DGII.
+      .pipe(z.string().regex(/^\d{9}$|^\d{11}$/, 'RNC de 9 dígitos o cédula de 11'))
+      .optional(),
+    /** Required when the business already issued comprobantes with its current RNC. */
+    confirmRncChange: z.boolean().optional(),
     direccion: optionalText(300),
     ubicacion: safeText(2, 120).optional(),
     telefono: optionalPhone,
@@ -107,6 +142,12 @@ export const updateSettingsSchema = z
   })
   .strict();
 
+function rncTaken(): AppError {
+  return new AppError(409, 'RNC registrado', 'Ese RNC ya tiene un negocio en Facilito.', 'rnc_taken', {
+    errors: [{ field: 'rnc', message: 'Ese RNC ya tiene un negocio en Facilito' }],
+  });
+}
+
 export async function updateSettings(tenantId: string, authorId: string, rol: RoleCode, input: unknown) {
   const raw = (input ?? {}) as Record<string, unknown>;
   const d = updateSettingsSchema.parse(input);
@@ -118,6 +159,44 @@ export async function updateSettings(tenantId: string, authorId: string, rol: Ro
       params.push(v);
       sets.push(`${col}=$${params.length}`);
     };
+    const audited: Record<string, unknown> = { ...d };
+    delete audited.rnc;
+    delete audited.confirmRncChange;
+    if (!('instagram' in raw)) delete audited.instagram;
+    if (d.rnc !== undefined && d.rnc !== before.rnc) {
+      if (rol !== 'owner') throw new AppError(403, 'Sin permiso', 'Solo el dueño puede cambiar el RNC o la cédula.', 'forbidden');
+      const issued = await q.query(
+        `SELECT 1 FROM app.factura WHERE tenant_id = $1 AND ncf IS NOT NULL
+         UNION ALL
+         SELECT 1 FROM app.comprobante_fiscal WHERE tenant_id = $1
+         LIMIT 1`,
+        [tenantId],
+      );
+      if (issued.rows.length && d.confirmRncChange !== true) {
+        throw new AppError(
+          409,
+          'Confirma el cambio de RNC',
+          'Este negocio ya emitió comprobantes fiscales con el RNC actual. El nuevo RNC se usará en los comprobantes futuros; los ya emitidos no cambian.',
+          'rnc_confirm_required',
+        );
+      }
+      // Other businesses are invisible under RLS; the UNIQUE (rnc_hash) constraint rejects duplicates below.
+      set('rnc_enc', encryptField(d.rnc));
+      set('rnc_hash', hashRnc(d.rnc));
+      audited.rncChanged = true;
+    }
+    if (d.razonSocial !== undefined) set('razon_social', d.razonSocial);
+    if (d.tipoNegocio !== undefined) {
+      const tipo = resolveBusinessType(d.tipoNegocio);
+      set('tipo_negocio', tipo.tipoNegocio);
+      set('tipo_negocio_source', tipo.source);
+      audited.tipoNegocio = tipo.tipoNegocio;
+    }
+    if ('instagram' in raw && d.instagram !== (before.instagram?.handle ?? null)) {
+      set('instagram_handle', d.instagram);
+      set('instagram_connected', false);
+      set('instagram_last_synced_at', null);
+    }
     if (d.nombreComercial !== undefined) set('nombre_comercial', d.nombreComercial);
     if ('direccion' in raw) set('direccion', d.direccion);
     if (d.ubicacion !== undefined) set('ubicacion', d.ubicacion);
@@ -130,14 +209,22 @@ export async function updateSettings(tenantId: string, authorId: string, rol: Ro
     if (d.permiteStockNegativo !== undefined) set('allow_negative_stock', d.permiteStockNegativo);
     if (sets.length) {
       sets.push('updated_at=now()');
-      await q.query(`UPDATE app.negocio SET ${sets.join(',')} WHERE id=$1`, params);
+      try {
+        await q.query(`UPDATE app.negocio SET ${sets.join(',')} WHERE id=$1`, params);
+      } catch (e) {
+        if ((e as { code?: string }).code === '23505') throw rncTaken();
+        throw e;
+      }
+      const prev = before as unknown as Record<string, unknown>;
       await appendAudit(q, {
         tenantId,
         action: 'update',
         entity: 'negocio',
         entityId: tenantId,
-        before: Object.fromEntries(Object.keys(d).map((k) => [k, (before as unknown as Record<string, unknown>)[k] ?? null])),
-        after: d,
+        before: Object.fromEntries(
+          Object.keys(audited).map((k) => [k, k === 'instagram' ? (before.instagram?.handle ?? null) : k === 'rncChanged' ? false : (prev[k] ?? null)]),
+        ),
+        after: audited,
         authorId,
       });
     }

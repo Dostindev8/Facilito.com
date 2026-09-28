@@ -1,0 +1,15 @@
+diff --git a/src/Assets.js b/src/Assets.js
+index a94d722574aab457395814e858fcf36741714feb..378d2a0b0322db2d2b43185fc85accf42efb0a39 100644
+--- a/src/Assets.js
++++ b/src/Assets.js
+@@ -3,7 +3,9 @@
+ const AssetPaths = require("./node-haste/lib/AssetPaths");
+ const crypto = require("crypto");
+ const fs = require("fs");
+-const getImageSize = require("image-size");
++const { imageSize } = require("image-size");
++const getImageSize = (input) =>
++  imageSize(typeof input === "string" ? fs.readFileSync(input) : input);
+ const path = require("path");
+ function isAssetTypeAnImage(type) {
+   return (

@@ -13,6 +13,15 @@ export async function sendPasswordResetEmail(email: string, token: string): Prom
   }
 }
 
+/** Same dev-only behavior as the reset link: the confirmation link is a credential for the new address. */
+export async function sendEmailChangeEmail(newEmail: string, token: string): Promise<void> {
+  const env = getEnv();
+  if (env.NODE_ENV === 'development') {
+    const base = env.CORS_ORIGINS.split(',')[0]?.trim() ?? 'http://localhost:3000';
+    console.info(`[mailer:dev] Email change to ${newEmail}: ${base}/confirmar-correo?token=${encodeURIComponent(token)}`);
+  }
+}
+
 export function emailProviderConfigured(): boolean {
   return false;
 }

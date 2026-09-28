@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { newUuidsV7, rncPlainSchema, type RoleCode } from '@facilito/domain';
+import { newUuidsV7, resolveBusinessType, rncPlainSchema, type RoleCode } from '@facilito/domain';
 import { listVerticals } from '@facilito/verticals';
 import { withAuthBootstrap, withPersona, type Queryable } from '../db/client.js';
 import {
@@ -17,20 +17,20 @@ import {
 import { encryptField, hashRnc, randomToken, sha256 } from '../utils/crypto.js';
 import { appendAudit } from '../audit/append.js';
 import { AppError } from '../http/errors.js';
-import { safeText } from '../http/validators.js';
+import { businessTypeField, instagramField, safeText } from '../http/validators.js';
 import { getEnv } from '../config/env.js';
 import { counterGet, counterIncr, counterReset } from '../utils/cache.js';
 import { sendPasswordResetEmail } from './mailer.js';
 
 const SHORT_SESSION_SECONDS = 12 * 60 * 60;
 
-const passwordSchema = z
+export const passwordSchema = z
   .string()
   .min(10, 'Mínimo 10 caracteres')
   .max(128, 'Máximo 128 caracteres')
   .refine((p) => /[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(p) && /\d/.test(p), 'Usa letras y números');
 
-const emailField = z
+export const emailField = z
   .string()
   .trim()
   .toLowerCase()
@@ -47,7 +47,10 @@ export const registerSchema = z
       .string()
       .transform((s) => s.replace(/[\s-]/g, ''))
       .pipe(rncPlainSchema),
-    vertical: z.string().default('colmado'),
+    /** Legacy catalog id; clients now send `tipoNegocio` (free text). */
+    vertical: z.string().max(40).optional(),
+    tipoNegocio: businessTypeField.optional(),
+    instagram: instagramField,
     recordarme: z.boolean().default(false),
   })
   .strict();
@@ -154,9 +157,10 @@ async function issueSession(
 
 export async function registerOwner(input: unknown): Promise<SessionResult> {
   const data = registerSchema.parse(input);
-  if (!listVerticals().some((v) => v.id === data.vertical)) {
+  if (data.vertical !== undefined && !listVerticals().some((v) => v.id === data.vertical)) {
     throw new AppError(400, 'Rubro inválido', 'Selecciona un tipo de negocio válido.', 'validation');
   }
+  const tipo = resolveBusinessType(data.tipoNegocio, data.vertical);
   const personaId = newUuidsV7();
   const tenantId = newUuidsV7();
   const accesoId = newUuidsV7();
@@ -181,9 +185,20 @@ export async function registerOwner(input: unknown): Promise<SessionResult> {
         data.nombre,
       ]);
       await q.query(
-        `INSERT INTO app.negocio (id, razon_social, nombre_comercial, rnc_enc, rnc_hash, verticales, created_by)
-         VALUES ($1,$2,$2,$3,$4,$5::jsonb,$6)`,
-        [tenantId, data.razonSocial, encryptField(data.rnc), rncHash, JSON.stringify([data.vertical]), personaId],
+        `INSERT INTO app.negocio (id, razon_social, nombre_comercial, rnc_enc, rnc_hash, verticales, created_by,
+                                  tipo_negocio, tipo_negocio_source, instagram_handle)
+         VALUES ($1,$2,$2,$3,$4,$5::jsonb,$6,$7,$8,$9)`,
+        [
+          tenantId,
+          data.razonSocial,
+          encryptField(data.rnc),
+          rncHash,
+          JSON.stringify([tipo.vertical]),
+          personaId,
+          tipo.tipoNegocio,
+          tipo.source,
+          data.instagram ?? null,
+        ],
       );
       await q.query(
         `INSERT INTO app.acceso (id, tenant_id, persona_id, rol, estado, display_name)
@@ -196,7 +211,7 @@ export async function registerOwner(input: unknown): Promise<SessionResult> {
         entity: 'negocio',
         entityId: tenantId,
         before: null,
-        after: { razonSocial: data.razonSocial, vertical: data.vertical },
+        after: { razonSocial: data.razonSocial, vertical: tipo.vertical, tipoNegocio: tipo.tipoNegocio, instagram: data.instagram ?? null },
         authorId: personaId,
       });
       const accesos = await loadAccesos(q, personaId);
@@ -381,10 +396,17 @@ export async function me(personaId: string, tenantId: string) {
       const accesos = await loadAccesos(q, personaId);
       const current = accesos.find((a) => a.tenant_id === tenantId);
       if (!p.rows[0] || !current) throw new AppError(401, 'No autorizado', 'Inicia sesión de nuevo.', 'unauthorized');
+      const pending = await q.query<{ new_email: string }>(
+        `SELECT new_email FROM identity.email_change
+          WHERE persona_id = $1 AND used_at IS NULL AND expires_at > now()
+          ORDER BY created_at DESC LIMIT 1`,
+        [personaId],
+      );
       return {
         personaId,
         nombre: current.display_name ?? p.rows[0].nombre ?? p.rows[0].email.split('@')[0],
         email: p.rows[0].email,
+        pendingEmail: pending.rows[0]?.new_email ?? null,
         totpEnabled: p.rows[0].totp_enabled,
         tenantId,
         accesoId: current.id,

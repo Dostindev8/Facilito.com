@@ -164,12 +164,13 @@ textarea {
   font-size: 0.95rem;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.05s;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.12s ease-out;
   text-decoration: none !important;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.97);
 }
 
 .btn:disabled {
@@ -370,6 +371,129 @@ textarea.input {
   right: 4px;
   top: 50%;
   transform: translateY(-50%);
+}
+
+/* Editable combobox (tipo de negocio) — same box as .input/select */
+.combobox {
+  position: relative;
+}
+
+.combobox .input.has-trailing {
+  padding-right: 42px;
+}
+
+.combobox-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.combobox-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 248px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  animation: fade-in 0.12s ease-out;
+}
+
+.combobox-list[hidden] {
+  display: none;
+}
+
+.combobox-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.combobox-option.active {
+  background: var(--green-50);
+  color: var(--green-700);
+}
+
+.combobox-option svg {
+  color: var(--green);
+  flex-shrink: 0;
+}
+
+/* Fixed visual prefix (instagram.com/) inside an input */
+.input-prefix {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.input-prefix-text {
+  display: flex;
+  align-items: center;
+  padding: 0 4px 0 14px;
+  border: 1px solid var(--line);
+  border-right: none;
+  border-radius: 12px 0 0 12px;
+  background: var(--line-2);
+  color: var(--ink-2);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.input-prefix .input {
+  border-radius: 0 12px 12px 0;
+  min-width: 0;
+}
+
+.input-prefix:has(.input-prefix-link) .input {
+  padding-right: 44px;
+}
+
+.input-prefix:focus-within .input-prefix-text {
+  border-color: var(--green);
+}
+
+.input-prefix:has(.input[aria-invalid='true']) .input-prefix-text {
+  border-color: var(--red);
+}
+
+.input-prefix-link {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--green-600);
+}
+
+.input-prefix-link:hover {
+  background: var(--green-50);
 }
 
 .check {
@@ -1725,6 +1849,70 @@ textarea.input {
   gap: 14px;
 }
 
+/* Brand loader: the logo itself is the progress indicator (splash + route transitions). */
+.app-loading {
+  display: grid;
+  place-items: center;
+  min-height: 60vh;
+  animation: app-loading-in 0.2s ease-out 0.15s both;
+}
+
+.app-loading.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  min-height: 100dvh;
+  background: linear-gradient(180deg, #e3f1fb 0%, #f4f9fd 55%, #fff 100%);
+}
+
+.app-loading-mark {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(10, 45, 32, 0.12);
+  animation: app-loading-pulse 1.4s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.app-loading-mark img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+@keyframes app-loading-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes app-loading-pulse {
+  from {
+    transform: scale(0.95);
+  }
+  to {
+    transform: scale(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-loading-mark {
+    animation: none;
+    will-change: auto;
+  }
+}
+
+.route-fade {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+  animation: fade-in 0.18s ease-out;
+}
+
 /* ───────────── Dashboard ───────────── */
 .date-picker {
   display: inline-flex;
@@ -2517,6 +2705,16 @@ textarea.input {
   align-items: start;
 }
 
+.settings-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.settings-grid .btn {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
 .toggle-row {
   display: flex;
   justify-content: space-between;
@@ -2772,9 +2970,13 @@ textarea.input {
     display: none;
   }
 
+  .content,
+  .route-fade {
+    gap: 16px;
+  }
+
   .content {
     padding: 16px 12px;
-    gap: 16px;
   }
 
   .card {

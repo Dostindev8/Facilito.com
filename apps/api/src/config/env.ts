@@ -42,6 +42,10 @@ const envSchema = z.object({
   PSFE_PROVIDER: z.string().default('stub'),
   FEATURE_ECF_ENABLED: bool('false'),
   FEATURE_COPILOT_ENABLED: bool('true'),
+  FEATURE_INSTAGRAM_OAUTH_ENABLED: bool('false'),
+  META_APP_ID: z.string().default(''),
+  META_APP_SECRET: z.string().default(''),
+  META_GRAPH_API_VERSION: z.string().default(''),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

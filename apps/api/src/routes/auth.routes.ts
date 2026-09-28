@@ -5,6 +5,7 @@ import { AppError } from '../http/errors.js';
 import { requireAuth } from '../http/auth-guard.js';
 import { assertCsrfHeader, clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../http/session-cookie.js';
 import * as auth from '../services/auth.service.js';
+import * as account from '../services/account.service.js';
 
 function respondSession(reply: FastifyReply, s: auth.SessionResult) {
   setRefreshCookie(reply, s.refresh.raw, s.refresh.maxAgeSeconds);
@@ -80,5 +81,33 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const a = await requireAuth(req);
     reply.header('cache-control', 'no-store');
     return auth.me(a.sub, a.tenantId);
+  });
+
+  app.patch('/v1/me', async (req) => {
+    const a = await requireAuth(req);
+    return account.updateProfile(a.sub, a.tenantId, req.body);
+  });
+
+  app.post('/v1/auth/email-change', { config: strict }, async (req, reply) => {
+    const a = await requireAuth(req);
+    reply.status(202);
+    return account.requestEmailChange(a.sub, req.body);
+  });
+
+  app.delete('/v1/auth/email-change', async (req, reply) => {
+    await account.cancelEmailChange((await requireAuth(req)).sub);
+    return reply.status(204).send();
+  });
+
+  app.post('/v1/auth/email-change/confirm', { config: strict }, async (req, reply) => {
+    const r = await account.confirmEmailChange(req.body);
+    clearRefreshCookie(reply);
+    return r;
+  });
+
+  app.post('/v1/auth/password', { config: strict }, async (req, reply) => {
+    const a = await requireAuth(req);
+    await account.changePassword(a.sub, readRefreshCookie(req), req.body);
+    return reply.status(204).send();
   });
 }

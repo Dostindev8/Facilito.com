@@ -13,6 +13,10 @@
     "./invoice": {
       "types": "./dist/invoice.d.ts",
       "import": "./dist/invoice.js"
+    },
+    "./business-profile": {
+      "types": "./dist/business-profile.d.ts",
+      "import": "./dist/business-profile.js"
     }
   },
   "scripts": {

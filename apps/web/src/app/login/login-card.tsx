@@ -4,11 +4,13 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { ArrowRight, Building2, KeyRound, Mail, ShieldCheck, TriangleAlert, User } from 'lucide-react';
+import { businessTypeError, parseInstagram } from '@facilito/domain/business-profile';
 import { ApiError, errorMessage, publicGet } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { safeNext } from '@/components/auth/auth-layout';
 import { PasswordInput, StrengthMeter } from '@/components/auth/password-input';
-import { Field, SelectInput, Spinner, fieldErrorMap } from '@/components/ui/primitives';
+import { BusinessTypeField, InstagramField } from '@/components/ui/business-fields';
+import { Field, Spinner, fieldErrorMap } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 
 type Tab = 'login' | 'registro';
@@ -50,12 +52,6 @@ function IconInput({
     </Field>
   );
 }
-
-const FALLBACK_VERTICALS = [
-  { id: 'colmado', label: 'Colmado / Minimarket' },
-  { id: 'ferreteria', label: 'Ferretería' },
-  { id: 'farmacia', label: 'Farmacia' },
-];
 
 export function LoginCard() {
   const params = useSearchParams();
@@ -173,7 +169,7 @@ function LoginForm({
     <>
       <h2>¡Bienvenido de nuevo!</h2>
       <p className="lead">Ingresa a tu cuenta y sigue haciendo crecer tu negocio.</p>
-      <form ref={formRef} className="auth-form" onSubmit={submit} noValidate>
+      <form ref={formRef} method="post" className="auth-form" onSubmit={submit} noValidate>
         {error && (
           <div className="form-alert" role="alert">
             <TriangleAlert size={18} /> <span>{error}</span>
@@ -257,22 +253,24 @@ function RegisterForm({
     email: '',
     razonSocial: '',
     rnc: '',
-    vertical: 'colmado',
+    tipoNegocio: 'Colmado',
+    instagram: '',
     password: '',
     confirm: '',
     recordarme: true,
   });
-  const [verticals, setVerticals] = useState(FALLBACK_VERTICALS);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const formRef = useRef<HTMLFormElement>(null);
 
-  useEffect(() => {
-    publicGet<Array<{ id: string; label: string }>>('/v1/verticals')
-      .then((v) => v.length && setVerticals(v.map((x) => ({ id: x.id, label: x.label }))))
-      .catch(() => undefined);
-  }, []);
+  const setFieldError = (k: string, msg: string | undefined) =>
+    setFields((f) => {
+      const next = { ...f };
+      if (msg) next[k] = msg;
+      else delete next[k];
+      return next;
+    });
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -283,6 +281,10 @@ function RegisterForm({
     if (form.razonSocial.trim().length < 2) e.razonSocial = 'Escribe el nombre de tu negocio';
     const rnc = form.rnc.replace(/[\s-]/g, '');
     if (!/^\d{9}$|^\d{11}$/.test(rnc)) e.rnc = 'RNC de 9 dígitos o cédula de 11';
+    const tipoError = businessTypeError(form.tipoNegocio);
+    if (tipoError) e.tipoNegocio = tipoError;
+    const ig = parseInstagram(form.instagram);
+    if (!ig.ok) e.instagram = ig.error;
     if (form.password.length < 10) e.password = 'Mínimo 10 caracteres';
     else if (!/[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(form.password) || !/\d/.test(form.password)) e.password = 'Usa letras y números';
     if (form.confirm !== form.password) e.confirm = 'Las contraseñas no coinciden';
@@ -298,6 +300,7 @@ function RegisterForm({
       focusFirstInvalid(formRef.current);
       return;
     }
+    const ig = parseInstagram(form.instagram);
     setBusy(true);
     try {
       await register({
@@ -306,7 +309,8 @@ function RegisterForm({
         password: form.password,
         razonSocial: form.razonSocial.trim(),
         rnc: form.rnc,
-        vertical: form.vertical,
+        tipoNegocio: form.tipoNegocio,
+        ...(ig.ok && ig.handle ? { instagram: ig.handle } : {}),
         recordarme: form.recordarme,
       });
       onDone();
@@ -323,7 +327,7 @@ function RegisterForm({
     <>
       <h2>Crea tu cuenta</h2>
       <p className="lead">Empieza gratis y organiza tu negocio en minutos.</p>
-      <form ref={formRef} className="auth-form" onSubmit={submit} noValidate>
+      <form ref={formRef} method="post" className="auth-form" onSubmit={submit} noValidate>
         {error && (
           <div className="form-alert" role="alert">
             <TriangleAlert size={18} /> <span>{error}</span>
@@ -372,14 +376,14 @@ function RegisterForm({
             error={fields.rnc}
             placeholder="1-01-00000-1"
           />
-          <SelectInput label="Tipo de negocio" value={form.vertical} onChange={(e) => set('vertical', e.target.value)} error={fields.vertical}>
-            {verticals.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.label}
-              </option>
-            ))}
-          </SelectInput>
+          <BusinessTypeField value={form.tipoNegocio} onChange={(v) => set('tipoNegocio', v)} error={fields.tipoNegocio} hint="" />
         </div>
+        <InstagramField
+          value={form.instagram}
+          onChange={(v) => set('instagram', v)}
+          onError={(m) => setFieldError('instagram', m)}
+          error={fields.instagram}
+        />
         <div className="stack" style={{ gap: 8 }}>
           <PasswordInput
             label="Contraseña"

@@ -30,6 +30,7 @@ export {
   type InvoiceLineTotals,
   type InvoiceTotals,
 } from './invoice.js';
+export * from './business-profile.js';
 export {
   uuidSchema,
   moneyStringSchema,

@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
 import { SafeAreaView, Text, View, StyleSheet, Pressable } from 'react-native';
-import { newUuidsV7 } from '@facilito/domain';
+import { v7 as newUuidsV7 } from 'uuid';
 import { OutboxEngine } from './src/outbox';
 
 const colors = {
