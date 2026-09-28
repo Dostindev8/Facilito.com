@@ -53,7 +53,7 @@ test.describe('autenticación', () => {
     await expect(page).toHaveURL(/\/login\?next=%2Finventario/);
   });
 
-  test('el parámetro next no permite redirección abierta', async ({ page }) => {
+  test('el parámetro next no permite redirección abierta', async ({ page, baseURL }) => {
     const email = uniqueEmail('next');
     await page.request.post('/api/v1/auth/register', {
       data: { nombre: 'Rosa Díaz', email, password: PASSWORD, razonSocial: 'Colmado Rosa', rnc: randomRnc(), vertical: 'colmado' },
@@ -63,7 +63,8 @@ test.describe('autenticación', () => {
     await page.getByLabel('Correo electrónico').fill(email);
     await page.getByLabel('Contraseña', { exact: true }).fill(PASSWORD);
     await page.getByRole('button', { name: /^Iniciar sesión/ }).click();
-    await expect(page).toHaveURL(/localhost:3000\/inicio$/);
+    await expect(page).toHaveURL(/\/inicio$/);
+    expect(new URL(page.url()).origin).toBe(new URL(baseURL!).origin);
   });
 
   test('pestañas accesibles por teclado y validación del registro enfoca el primer error', async ({ page }) => {
