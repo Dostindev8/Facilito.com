@@ -5,7 +5,7 @@ import { hashPassword, hashRefresh, verifyPassword } from '../auth/tokens.js';
 import { AppError } from '../http/errors.js';
 import { safeText } from '../http/validators.js';
 import { randomToken, sha256 } from '../utils/crypto.js';
-import { sendEmailChangeEmail } from './mailer.js';
+import { MailDeliveryError, sendEmailChangeEmail, sendEmailChangeNoticeEmail } from './mailer.js';
 import { emailField, me, passwordSchema } from './auth.service.js';
 
 const EMAIL_CHANGE_TTL_MINUTES = 60;
@@ -52,7 +52,7 @@ export const emailChangeSchema = z
 export async function requestEmailChange(personaId: string, input: unknown): Promise<{ pendingEmail: string }> {
   const d = emailChangeSchema.parse(input);
   const token = randomToken(32);
-  await withPersona(
+  const currentEmail = await withPersona(
     personaId,
     async (q) => {
       await assertPassword(q, personaId, d.password, 'password');
@@ -73,10 +73,17 @@ export async function requestEmailChange(personaId: string, input: unknown): Pro
         `INSERT INTO identity.email_change (id, persona_id, new_email, token_hash, expires_at) VALUES ($1,$2,$3,$4,$5)`,
         [newUuidsV7(), personaId, d.newEmail, sha256(token), new Date(Date.now() + EMAIL_CHANGE_TTL_MINUTES * 60_000).toISOString()],
       );
+      return cur.rows[0]?.email ?? null;
     },
     { authBootstrap: true },
   );
-  await sendEmailChangeEmail(d.newEmail, token);
+  try {
+    await sendEmailChangeEmail(d.newEmail, token);
+  } catch (err) {
+    if (!(err instanceof MailDeliveryError)) throw err;
+    throw new AppError(502, 'No pudimos enviar el correo', 'Intenta de nuevo en unos minutos.', 'email_delivery_failed');
+  }
+  if (currentEmail) await sendEmailChangeNoticeEmail(currentEmail, d.newEmail).catch(() => undefined);
   return { pendingEmail: d.newEmail };
 }
 

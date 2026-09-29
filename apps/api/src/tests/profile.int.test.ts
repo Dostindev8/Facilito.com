@@ -4,16 +4,34 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { withTenant } from '../db/client.js';
 import { addStaff, api, bootApp, createProduct, PASSWORD, register, shutdown, type Session } from './helpers.js';
 
-const sent = vi.hoisted(() => ({ emailChange: [] as Array<{ to: string; token: string }>, reset: [] as Array<{ to: string; token: string }> }));
-vi.mock('../services/mailer.js', () => ({
-  sendPasswordResetEmail: async (to: string, token: string) => {
-    sent.reset.push({ to, token });
-  },
-  sendEmailChangeEmail: async (to: string, token: string) => {
-    sent.emailChange.push({ to, token });
-  },
-  emailProviderConfigured: () => false,
+const sent = vi.hoisted(() => ({
+  emailChange: [] as Array<{ to: string; token: string }>,
+  reset: [] as Array<{ to: string; token: string }>,
+  notice: [] as Array<{ to: string; newEmail: string }>,
+  fail: false,
 }));
+vi.mock('../services/mailer.js', () => {
+  class MailDeliveryError extends Error {}
+  const guard = () => {
+    if (sent.fail) throw new MailDeliveryError('smtp down');
+  };
+  return {
+    MailDeliveryError,
+    sendPasswordResetEmail: async (to: string, token: string) => {
+      guard();
+      sent.reset.push({ to, token });
+    },
+    sendEmailChangeEmail: async (to: string, token: string) => {
+      guard();
+      sent.emailChange.push({ to, token });
+    },
+    sendEmailChangeNoticeEmail: async (to: string, newEmail: string) => {
+      guard();
+      sent.notice.push({ to, newEmail });
+    },
+    emailProviderConfigured: () => false,
+  };
+});
 
 let app: FastifyInstance;
 let rncSeq = 400_000_000;
@@ -249,5 +267,31 @@ describe('Mi cuenta: nombre, correo verificado y contraseña', () => {
     expect(changed.statusCode).toBe(204);
     expect((await resetWith(staleByPassword)).statusCode).toBe(400);
     expect((await login(b.email, 'NuevaClave2026')).statusCode).toBe(200);
+  });
+});
+
+describe('Correos: aviso de seguridad y fallas del proveedor', () => {
+  it('pedir un cambio de correo avisa a la dirección actual', async () => {
+    const s = await register(app);
+    const newEmail = `aviso.${randomUUID()}@facilito.test`;
+    expect((await api(app, s).post('/v1/auth/email-change', { newEmail, password: PASSWORD })).statusCode).toBe(202);
+    expect(sent.notice.at(-1)).toEqual({ to: s.email, newEmail });
+  });
+
+  it('si el correo no sale, el cambio de correo responde 502 y el reset no revela nada', async () => {
+    const s = await register(app);
+    sent.fail = true;
+    try {
+      const change = await api(app, s).post('/v1/auth/email-change', { newEmail: `falla.${randomUUID()}@facilito.test`, password: PASSWORD });
+      expect(change.statusCode).toBe(502);
+      expect(change.json().code).toBe('email_delivery_failed');
+
+      const existing = await app.inject({ method: 'POST', url: '/v1/auth/forgot-password', payload: { email: s.email } });
+      const missing = await app.inject({ method: 'POST', url: '/v1/auth/forgot-password', payload: { email: `nadie.${randomUUID()}@facilito.test` } });
+      expect(existing.statusCode).toBe(missing.statusCode);
+      expect(existing.body).toBe(missing.body);
+    } finally {
+      sent.fail = false;
+    }
   });
 });

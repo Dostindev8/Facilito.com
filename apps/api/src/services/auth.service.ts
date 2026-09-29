@@ -20,7 +20,7 @@ import { AppError } from '../http/errors.js';
 import { businessTypeField, instagramField, safeText } from '../http/validators.js';
 import { getEnv } from '../config/env.js';
 import { counterGet, counterIncr, counterReset } from '../utils/cache.js';
-import { sendPasswordResetEmail } from './mailer.js';
+import { emailProviderConfigured, MailDeliveryError, sendPasswordResetEmail } from './mailer.js';
 
 const SHORT_SESSION_SECONDS = 12 * 60 * 60;
 
@@ -423,8 +423,23 @@ export async function me(personaId: string, tenantId: string) {
 
 const RESET_TTL_MINUTES = 30;
 
+// SMTP round trips take ~1-3 s; answering every request no sooner than this hides whether the account exists.
+const RESET_RESPONSE_FLOOR_MS = 3500;
+
 export async function requestPasswordReset(input: unknown): Promise<void> {
   const { email } = z.object({ email: emailField }).strict().parse(input);
+  const startedAt = Date.now();
+  try {
+    await issuePasswordReset(email);
+  } finally {
+    if (emailProviderConfigured()) {
+      const wait = RESET_RESPONSE_FLOOR_MS - (Date.now() - startedAt);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+}
+
+async function issuePasswordReset(email: string): Promise<void> {
   const token = randomToken(32);
   const persona = await withAuthBootstrap(async (q) => {
     const r = await q.query<{ id: string }>(`SELECT id FROM identity.persona WHERE lower(email) = $1`, [email]);
@@ -436,8 +451,15 @@ export async function requestPasswordReset(input: unknown): Promise<void> {
     );
     return p;
   });
-  if (persona) await sendPasswordResetEmail(email, token);
-  else await verifyAgainstDummy(token);
+  if (!persona) {
+    await verifyAgainstDummy(token);
+    return;
+  }
+  try {
+    await sendPasswordResetEmail(email, token);
+  } catch (err) {
+    if (!(err instanceof MailDeliveryError)) throw err;
+  }
 }
 
 export async function resetPassword(input: unknown): Promise<void> {
