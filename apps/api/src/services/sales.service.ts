@@ -9,12 +9,20 @@ import { ROLE_HIERARCHY, type RoleCode } from '@facilito/domain';
 
 const decimal = z.string().regex(/^\d{1,14}(\.\d{1,4})?$/, 'Número inválido');
 
+const TAX_RATES = ['0', '0.16', '0.18'] as const;
+
 const itemSchema = z.object({
   productoId: z.string().uuid(),
   cantidad: decimal.refine((v) => Number(v) > 0, 'Cantidad debe ser mayor que cero'),
-  precioUnitario: decimal,
-  taxRate: z.enum(['0', '0.16', '0.18']).default('0.18'),
+  /** Ignored unless the seller may override prices; the catalog price is authoritative. */
+  precioUnitario: decimal.optional(),
+  /** Accepted for backward compatibility and ignored: the product's ITBIS rate always applies. */
+  taxRate: z.enum(TAX_RATES).optional(),
 });
+
+type PricedItem = { productoId: string; cantidad: string; precioUnitario: string; taxRate: string };
+
+const PRICE_OVERRIDE_ROLES: readonly RoleCode[] = ['owner', 'manager'];
 
 const saleSchema = z.object({
   clientUuid: z.string().uuid(),
@@ -37,7 +45,7 @@ const DISCOUNT_CAPS: Record<RoleCode, number> = {
   viewer: 0,
 };
 
-export function computeSaleTotals(items: z.infer<typeof itemSchema>[], descuento: string) {
+export function computeSaleTotals(items: PricedItem[], descuento: string) {
   let subtotal = Money.zero();
   let tax = Money.zero();
   for (const item of items) {
@@ -63,23 +71,64 @@ export async function createSale(
   input: unknown,
 ) {
   const data = saleSchema.parse(input);
-  const totals = computeSaleTotals(data.items, data.descuento);
-  const cap = DISCOUNT_CAPS[rol] ?? 0;
-  const disc = Money.fromString(data.descuento);
-  if (disc.isNegative() || disc.cmp(Money.fromString(totals.subtotal)) > 0) {
-    throw new AppError(400, 'Descuento inválido', 'El descuento no puede ser negativo ni mayor que el subtotal.', 'validation');
-  }
-  const exceedsCap = disc.mul(100).cmp(Money.fromString(totals.subtotal).mul(cap)) > 0;
-  if (exceedsCap) {
-    if (!data.supervisorPin) {
-      throw new AppError(
-        403,
-        'PIN de supervisor',
-        'El descuento supera el tope de tu rol. Pide autorización.',
-        'discount_cap',
-      );
+  const id = newUuidsV7();
+  return withTenant(tenantId, async (client) => {
+    const dup = await client.query<{ id: string; descuento: string; impuestos: string; total: string }>(
+      `SELECT id, descuento::text, impuestos::text, total::text FROM app.venta WHERE tenant_id=$1 AND client_uuid=$2`,
+      [tenantId, data.clientUuid],
+    );
+    if (dup.rows[0]) {
+      const d = dup.rows[0];
+      const descuento = Money.fromString(d.descuento).round(2);
+      const impuestos = Money.fromString(d.impuestos).round(2);
+      const total = Money.fromString(d.total).round(2);
+      return {
+        id: d.id,
+        duplicate: true,
+        totals: {
+          subtotal: total.sub(impuestos).add(descuento).toFixed(2),
+          impuestos: impuestos.toFixed(2),
+          descuento: descuento.toFixed(2),
+          total: total.toFixed(2),
+        },
+      };
     }
-    await withTenant(tenantId, async (client) => {
+
+    const ids = [...new Set(data.items.map((i) => i.productoId))].sort();
+    const prods = await client.query<{ id: string; nombre: string; estado: string; precio_venta: string; tax_rate: string }>(
+      `SELECT id, nombre, estado, precio_venta::text, tax_rate::text
+         FROM app.producto WHERE tenant_id=$1 AND id = ANY($2::uuid[]) ORDER BY id FOR UPDATE`,
+      [tenantId, ids],
+    );
+    const byId = new Map(prods.rows.map((p) => [p.id, p]));
+    const items: PricedItem[] = data.items.map((item, i) => {
+      const p = byId.get(item.productoId);
+      if (!p) throw new AppError(400, 'Producto inválido', `Línea ${i + 1}: el producto no existe en este negocio.`, 'reference', { line: i });
+      if (p.estado !== 'activo') {
+        throw new AppError(409, 'Producto no disponible', `Línea ${i + 1}: "${p.nombre}" está ${p.estado}.`, 'product_inactive', { line: i });
+      }
+      const overridden = item.precioUnitario !== undefined && Money.fromString(item.precioUnitario).cmp(Money.fromString(p.precio_venta)) !== 0;
+      if (overridden && !PRICE_OVERRIDE_ROLES.includes(rol)) {
+        throw new AppError(403, 'Precio bloqueado', 'Solo el dueño o gerente puede cambiar el precio de venta.', 'price_override', { line: i });
+      }
+      return {
+        productoId: item.productoId,
+        cantidad: item.cantidad,
+        precioUnitario: overridden ? item.precioUnitario! : p.precio_venta,
+        taxRate: p.tax_rate,
+      };
+    });
+
+    const totals = computeSaleTotals(items, data.descuento);
+    const cap = DISCOUNT_CAPS[rol] ?? 0;
+    const disc = Money.fromString(data.descuento);
+    if (disc.isNegative() || disc.cmp(Money.fromString(totals.subtotal)) > 0) {
+      throw new AppError(400, 'Descuento inválido', 'El descuento no puede ser negativo ni mayor que el subtotal.', 'validation');
+    }
+    if (disc.mul(100).cmp(Money.fromString(totals.subtotal).mul(cap)) > 0) {
+      if (!data.supervisorPin) {
+        throw new AppError(403, 'PIN de supervisor', 'El descuento supera el tope de tu rol. Pide autorización.', 'discount_cap');
+      }
       const managers = await client.query<{ pin_hash: string | null }>(
         `SELECT pin_hash FROM app.acceso
          WHERE tenant_id=$1 AND rol IN ('owner','manager') AND estado='active' AND pin_hash IS NOT NULL`,
@@ -87,7 +136,7 @@ export async function createSale(
       );
       let ok = false;
       for (const m of managers.rows) {
-        if (m.pin_hash && (await verifyPin(m.pin_hash, data.supervisorPin!))) {
+        if (m.pin_hash && (await verifyPin(m.pin_hash, data.supervisorPin))) {
           ok = true;
           break;
         }
@@ -95,17 +144,6 @@ export async function createSale(
       if (!ok) {
         throw new AppError(403, 'PIN inválido', 'El PIN de supervisor no es válido.', 'pin');
       }
-    });
-  }
-
-  const id = newUuidsV7();
-  return withTenant(tenantId, async (client) => {
-    const dup = await client.query(`SELECT id FROM app.venta WHERE tenant_id=$1 AND client_uuid=$2`, [
-      tenantId,
-      data.clientUuid,
-    ]);
-    if (dup.rows[0]) {
-      return { id: dup.rows[0].id as string, duplicate: true, totals };
     }
 
     await client.query(
@@ -117,7 +155,7 @@ export async function createSale(
         id,
         data.clientUuid,
         data.clienteNombre ?? null,
-        JSON.stringify(data.items),
+        JSON.stringify(items),
         totals.descuento,
         totals.impuestos,
         totals.total,
@@ -129,7 +167,7 @@ export async function createSale(
       ],
     );
 
-    for (const item of data.items) {
+    for (const item of items) {
       await appendMovementWithClient(client, tenantId, authorId, {
         tipo: 'sale',
         productoId: item.productoId,
@@ -156,7 +194,7 @@ export async function createSale(
       entity: 'venta',
       entityId: id,
       before: null,
-      after: { total: totals.total, items: data.items.length },
+      after: { total: totals.total, items: items.length },
       authorId,
       deviceId: data.deviceId,
     });
