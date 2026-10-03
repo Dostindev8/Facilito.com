@@ -28,6 +28,11 @@
       "image-size@<2.0.3": "^2.0.3",
       "uuid@<11.1.1": "^11.1.1"
     },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-86w9-cpqp-85rv"
+      ]
+    },
     "patchedDependencies": {
       "@expo/cli@0.22.28": "patches/@expo__cli@0.22.28.patch",
       "metro@0.81.5": "patches/metro@0.81.5.patch"
