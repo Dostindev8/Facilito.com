@@ -33,11 +33,8 @@ export async function stats(actorId: string) {
   return asPlatformAdmin(actorId, async (q) => {
     const r = await q.query<Record<string, number>>(
       `SELECT
-         (SELECT count(*) FROM identity.persona p
-           WHERE NOT EXISTS (SELECT 1 FROM identity.platform_admin x WHERE x.persona_id = p.id))::int AS usuarios,
-         (SELECT count(*) FROM identity.persona p
-           WHERE p.created_at > now() - interval '30 days'
-             AND NOT EXISTS (SELECT 1 FROM identity.platform_admin x WHERE x.persona_id = p.id))::int AS usuarios_nuevos_30d,
+         (SELECT count(*) FROM identity.persona)::int AS usuarios,
+         (SELECT count(*) FROM identity.persona WHERE created_at > now() - interval '30 days')::int AS usuarios_nuevos_30d,
          (SELECT count(*) FROM identity.persona WHERE bloqueado_at IS NOT NULL)::int AS usuarios_bloqueados,
          (SELECT count(DISTINCT persona_id) FROM identity.refresh_token WHERE created_at > now() - interval '7 days')::int AS activos_7d,
          (SELECT count(*) FROM app.negocio WHERE NOT es_plataforma)::int AS negocios,
