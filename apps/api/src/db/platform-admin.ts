@@ -1,10 +1,11 @@
 import { newUuidsV7 } from '@facilito/domain';
 import { getDriver } from './client.js';
 import { hashPassword } from '../auth/tokens.js';
-import { encryptField, sha256 } from '../utils/crypto.js';
+import { sha256 } from '../utils/crypto.js';
 import { emailField, passwordSchema } from '../services/auth.service.js';
 
 const PLATFORM_TENANT_NAME = 'Facilito · Administración';
+const PLATFORM_RNC_SENTINEL = 'platform:none';
 
 /**
  * Creates (or repairs) a platform administrator on the privileged connection. Idempotent: an existing account with
@@ -52,8 +53,9 @@ export async function provisionPlatformAdmin(input: { email: string; password: s
         `INSERT INTO app.negocio (id, razon_social, nombre_comercial, rnc_enc, rnc_hash, verticales, created_by,
                                   tipo_negocio, tipo_negocio_source, sujeto_dgii, es_plataforma)
          VALUES ($1, $2, $2, $3, $4, '["colmado"]'::jsonb, $5, 'Administración', 'custom', false, true)`,
-        // Not a real RNC: the hash input can never collide with a 9/11-digit document.
-        [tenantId, PLATFORM_TENANT_NAME, encryptField('PLATAFORMA'), sha256('facilito:platform-tenant'), personaId],
+        // No real RNC: the sentinel never decrypts (settings shows it empty) and the hash input can never collide with
+        // a 9/11-digit document, so provisioning does not need the production FIELD_ENCRYPTION_KEY.
+        [tenantId, PLATFORM_TENANT_NAME, PLATFORM_RNC_SENTINEL, sha256('facilito:platform-tenant'), personaId],
       );
     } else {
       await admin.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);

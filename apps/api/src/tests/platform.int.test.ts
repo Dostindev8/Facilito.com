@@ -32,6 +32,9 @@ describe('provisioning', () => {
   it('logs in with just email and password, with platform flag and an internal workspace', async () => {
     const res = await login(ADMIN_EMAIL.toLowerCase(), ADMIN_PASSWORD);
     expect(res.json().user).toMatchObject({ platformAdmin: true, rol: 'owner', negocio: 'Facilito · Administración' });
+    const s = await api(app, admin).get('/v1/settings');
+    expect(s.statusCode).toBe(200);
+    expect(JSON.stringify(s.json())).toContain('"rnc":null');
   });
 
   it('is idempotent: re-running keeps one account and rotates the password', async () => {

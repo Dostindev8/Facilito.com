@@ -4,7 +4,8 @@ import { getDriver } from './client.js';
 /**
  * Usage (credentials come from the environment, never from argv or the repo):
  *   PLATFORM_ADMIN_EMAIL=... PLATFORM_ADMIN_PASSWORD=... [PLATFORM_ADMIN_NAME=...] pnpm --filter @facilito/api platform:admin
- * Needs DATABASE_ADMIN_URL and the production FIELD_ENCRYPTION_KEY.
+ * Needs DATABASE_DRIVER=pg and DATABASE_ADMIN_URL. FIELD_ENCRYPTION_KEY only has to satisfy env validation: nothing
+ * written here is encrypted.
  */
 async function main(): Promise<void> {
   const email = process.env.PLATFORM_ADMIN_EMAIL;
