@@ -84,6 +84,10 @@ describe('panel data', () => {
     const s = res.json();
     expect(s.usuarios).toBeGreaterThanOrEqual(1);
     expect(s.negocios).toBeGreaterThanOrEqual(1);
+    const users = (await api(app, admin).get('/v1/platform/users')).json();
+    const businesses = (await api(app, admin).get('/v1/platform/businesses')).json();
+    expect(s.usuarios).toBe(users.total);
+    expect(s.negocios).toBe(businesses.total);
   });
 
   it('lists users with their businesses and supports search', async () => {
