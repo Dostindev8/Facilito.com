@@ -12,7 +12,8 @@
     "test": "vitest run --config vitest.config.ts",
     "test:isolation": "vitest run --config vitest.isolation.config.ts",
     "migrate": "tsx src/db/migrate.ts",
-    "db:bootstrap": "tsx src/db/bootstrap.ts"
+    "db:bootstrap": "tsx src/db/bootstrap.ts",
+    "platform:admin": "tsx src/db/provision-platform-admin.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

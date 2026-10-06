@@ -5,6 +5,7 @@ import { ensureSchema } from '../db/schema.js';
 import { resetDriverForTests, withAuthBootstrap } from '../db/client.js';
 import { __resetMemoryCacheForTests } from '../utils/cache.js';
 import { hashPassword } from '../auth/tokens.js';
+import { __resetSessionStatusForTests } from '../auth/session-status.js';
 
 export const PASSWORD = 'Segura12345';
 
@@ -14,6 +15,7 @@ let emailSeq = 0;
 export async function bootApp(): Promise<FastifyInstance> {
   await resetDriverForTests();
   __resetMemoryCacheForTests();
+  __resetSessionStatusForTests();
   await ensureSchema();
   const app = await buildApp();
   await app.ready();

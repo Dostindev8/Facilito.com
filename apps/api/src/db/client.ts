@@ -18,6 +18,7 @@ interface TxOptions {
   tenantId?: string;
   personaId?: string;
   authBootstrap?: boolean;
+  platform?: boolean;
 }
 
 export interface Driver {
@@ -34,6 +35,7 @@ async function applySession(q: Queryable, options: TxOptions): Promise<void> {
   await q.query(`SELECT set_config('app.auth_bootstrap', $1, true)`, [
     options.authBootstrap ? '1' : '',
   ]);
+  await q.query(`SELECT set_config('app.platform', $1, true)`, [options.platform ? '1' : '']);
 }
 
 function pgDriver(connectionString: string): Driver {
@@ -188,6 +190,11 @@ export async function withPersona<T>(
   options?: { authBootstrap?: boolean; tenantId?: string },
 ): Promise<T> {
   return runTx({ personaId, authBootstrap: options?.authBootstrap, tenantId: options?.tenantId }, fn);
+}
+
+/** Cross-tenant platform administration. The database still requires the persona to be a provisioned admin. */
+export async function withPlatformAdmin<T>(personaId: string, fn: (q: Queryable) => Promise<T>): Promise<T> {
+  return runTx({ personaId, platform: true }, fn);
 }
 
 /** Only for the auth service: login/refresh/reset need to look up identities before a persona is known. */

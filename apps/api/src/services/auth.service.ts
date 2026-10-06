@@ -83,6 +83,7 @@ export interface SessionUser {
   rol: RoleCode;
   negocio: string;
   businesses: Array<{ tenantId: string; rol: RoleCode; razonSocial: string }>;
+  platformAdmin: boolean;
 }
 
 interface AccesoRow {
@@ -97,13 +98,24 @@ interface AccesoRow {
 async function loadAccesos(q: Queryable, personaId: string): Promise<AccesoRow[]> {
   const r = await q.query<AccesoRow & Record<string, unknown>>(
     `SELECT a.id, a.tenant_id, a.rol, n.razon_social, n.nombre_comercial, a.display_name
-       FROM app.acceso a JOIN app.negocio n ON n.id = a.tenant_id
-      WHERE a.persona_id = $1 AND a.estado = 'active' AND n.estado = 'activo'
-      ORDER BY a.created_at`,
+       FROM app.acceso a
+       JOIN app.negocio n ON n.id = a.tenant_id
+       JOIN identity.persona p ON p.id = a.persona_id
+      WHERE a.persona_id = $1 AND a.estado = 'active' AND n.estado = 'activo' AND p.bloqueado_at IS NULL
+      ORDER BY n.es_plataforma DESC, a.created_at`,
     [personaId],
   );
   return r.rows;
 }
+
+/** Needs app.persona_id set to `personaId` (the membership table is readable only by its own row). */
+async function isPlatformAdmin(q: Queryable, personaId: string): Promise<boolean> {
+  const r = await q.query('SELECT 1 FROM identity.platform_admin WHERE persona_id = $1', [personaId]);
+  return r.rows.length > 0;
+}
+
+export const ACCOUNT_BLOCKED = () =>
+  new AppError(403, 'Cuenta suspendida', 'Tu cuenta está suspendida. Escríbenos a soporte si crees que es un error.', 'account_blocked');
 
 async function issueSession(
   q: Queryable,
@@ -129,11 +141,13 @@ async function issueSession(
       remember,
     ],
   );
+  const platformAdmin = await isPlatformAdmin(q, persona.id);
   const accessToken = await signAccessToken({
     sub: persona.id,
     tenantId: chosen.tenant_id,
     accesoId: chosen.id,
     rol: chosen.rol,
+    platformAdmin,
   });
   return {
     accessToken,
@@ -151,6 +165,7 @@ async function issueSession(
         rol: a.rol,
         razonSocial: a.nombre_comercial ?? a.razon_social,
       })),
+      platformAdmin,
     },
   };
 }
@@ -252,8 +267,10 @@ export async function login(input: unknown, ip: string): Promise<SessionResult> 
       password_hash: string;
       totp_enabled: boolean;
       totp_secret_enc: string | null;
+      bloqueado_at: Date | string | null;
     }>(
-      `SELECT id, email, nombre, password_hash, totp_enabled, totp_secret_enc FROM identity.persona WHERE lower(email) = $1`,
+      `SELECT id, email, nombre, password_hash, totp_enabled, totp_secret_enc, bloqueado_at
+         FROM identity.persona WHERE lower(email) = $1`,
       [data.email],
     );
     return r.rows[0] ?? null;
@@ -269,6 +286,8 @@ export async function login(input: unknown, ip: string): Promise<SessionResult> 
     }
     if (!verifyTotp(decryptTotpSecret(persona.totp_secret_enc), data.totp)) return fail();
   }
+  // Only revealed after the password proved ownership, so it cannot be used to probe accounts.
+  if (persona.bloqueado_at) throw ACCOUNT_BLOCKED();
   await counterReset(emailKey);
 
   return withPersona(
@@ -315,10 +334,11 @@ export async function refreshSession(rawRefresh: string | undefined): Promise<Se
     }
     if (new Date(tok.expires_at).getTime() < Date.now()) return { kind: 'expired' as const };
     await q.query(`UPDATE identity.refresh_token SET revoked_at = now() WHERE id = $1`, [tok.id]);
-    const p = await q.query<{ id: string; email: string; nombre: string | null }>(
-      `SELECT id, email, nombre FROM identity.persona WHERE id = $1`,
+    const p = await q.query<{ id: string; email: string; nombre: string | null; bloqueado_at: Date | string | null }>(
+      `SELECT id, email, nombre, bloqueado_at FROM identity.persona WHERE id = $1`,
       [tok.persona_id],
     );
+    if (p.rows[0]?.bloqueado_at) return { kind: 'blocked' as const };
     await q.query(`SELECT set_config('app.persona_id', $1, true)`, [tok.persona_id]);
     const accesos = await loadAccesos(q, tok.persona_id);
     const chosen = accesos.find((a) => a.tenant_id === tok.tenant_id) ?? accesos[0];
@@ -332,6 +352,8 @@ export async function refreshSession(rawRefresh: string | undefined): Promise<Se
       throw new AppError(401, 'Sesión cerrada por seguridad', 'Detectamos un uso repetido de tu sesión. Inicia sesión de nuevo.', 'refresh_reuse');
     case 'expired':
       throw new AppError(401, 'Sesión expirada', 'Inicia sesión de nuevo.', 'refresh');
+    case 'blocked':
+      throw ACCOUNT_BLOCKED();
     case 'no_tenant':
       throw new AppError(403, 'Sin negocios', 'No tienes acceso activo a ningún negocio.', 'no_tenant');
     default:
@@ -413,6 +435,7 @@ export async function me(personaId: string, tenantId: string) {
         rol: current.rol,
         negocio: current.nombre_comercial ?? current.razon_social,
         businesses: accesos.map((a) => ({ tenantId: a.tenant_id, rol: a.rol, razonSocial: a.nombre_comercial ?? a.razon_social })),
+        platformAdmin: await isPlatformAdmin(q, personaId),
       };
     },
     { tenantId },

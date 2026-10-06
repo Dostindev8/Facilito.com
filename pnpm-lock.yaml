@@ -7,6 +7,7 @@ settings:
 overrides:
   '@xmldom/xmldom@<0.8.12': ^0.8.12
   postcss@<8.5.10: ^8.5.10
+  source-map-js@<1.2.2: ^1.2.2
   tar@<7.5.21: ^7.5.21
   image-size@<2.0.3: ^2.0.3
   uuid@<11.1.1: ^11.1.1
@@ -1209,7 +1210,7 @@ packages:
 
   '@expo/bunyan@4.0.1':
     resolution: {integrity: sha512-+Lla7nYSiHZirgK+U/uYzsLv/X+HaJienbD5AKX1UQZHYfWaP+9uuQluRB4GrEVWF0GZ7vEVp/jzaOT9k/SQlg==}
-    engines: {node: '>=0.10.0'}
+    engines: {'0': node >=0.10.0}
 
   '@expo/cli@0.22.28':
     resolution: {integrity: sha512-lvt72KNitGuixYD2l3SZmRKVu2G4zJpmg5V7WfUBNpmUU5oODBw/6qmiJ6kSLAlfDozscUk+BBGknBBzxUrwrA==}
@@ -4258,8 +4259,8 @@ packages:
   sonic-boom@4.2.1:
     resolution: {integrity: sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==}
 
-  source-map-js@1.2.1:
-    resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
+  source-map-js@1.2.2:
+    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
 
   source-map-support@0.5.21:
@@ -8993,7 +8994,7 @@ snapshots:
     dependencies:
       nanoid: 3.3.19
       picocolors: 1.1.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   postgres-array@2.0.0: {}
 
@@ -9408,7 +9409,7 @@ snapshots:
     dependencies:
       atomic-sleep: 1.0.0
 
-  source-map-js@1.2.1: {}
+  source-map-js@1.2.2: {}
 
   source-map-support@0.5.21:
     dependencies:

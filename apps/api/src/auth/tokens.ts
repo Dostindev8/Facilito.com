@@ -66,6 +66,8 @@ export interface AccessClaims {
   tenantId: string;
   accesoId: string;
   rol: RoleCode;
+  /** UI hint only: platform endpoints re-check membership in the database. */
+  platformAdmin: boolean;
   typ: 'access';
 }
 
@@ -76,6 +78,7 @@ export async function signAccessToken(claims: Omit<AccessClaims, 'typ'>): Promis
     tenantId: claims.tenantId,
     accesoId: claims.accesoId,
     rol: claims.rol,
+    ...(claims.platformAdmin ? { pa: true } : {}),
     typ: 'access',
   })
     .setProtectedHeader({ alg: 'RS256' })
@@ -96,6 +99,7 @@ export async function verifyAccessToken(token: string): Promise<AccessClaims> {
     tenantId: String(payload.tenantId),
     accesoId: String(payload.accesoId),
     rol: payload.rol as RoleCode,
+    platformAdmin: payload.pa === true,
     typ: 'access',
   };
 }
