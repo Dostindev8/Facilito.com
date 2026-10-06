@@ -11,6 +11,7 @@ export interface SessionUser {
   rol: Role;
   negocio: string;
   businesses: Array<{ tenantId: string; rol: Role; razonSocial: string }>;
+  platformAdmin?: boolean;
 }
 
 export interface FieldError {
@@ -173,7 +174,11 @@ export async function apiResponse(path: string, opts: ApiOptions = {}): Promise<
     if (!user) throw await toApiError(res);
     res = await send(path, opts);
   }
-  if (!res.ok) throw await toApiError(res);
+  if (!res.ok) {
+    const err = await toApiError(res);
+    if (err.code === 'account_blocked') setSession(null, null);
+    throw err;
+  }
   return res;
 }
 

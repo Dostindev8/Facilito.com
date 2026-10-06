@@ -12,6 +12,7 @@ import {
   MapPin,
   Package,
   Settings,
+  ShieldCheck,
   ShoppingCart,
   Truck,
   Users,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { Modal } from '@/components/ui/primitives';
+import { useAuth } from '@/lib/auth';
 
 export const NAV = [
   { href: '/inicio', label: 'Inicio', icon: House },
@@ -31,11 +33,15 @@ export const NAV = [
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ] as const;
 
+const PLATFORM_NAV = { href: '/admin', label: 'Admin plataforma', icon: ShieldCheck } as const;
+
 const SUPPORT_URL = process.env.NEXT_PUBLIC_SUPPORT_URL;
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [support, setSupport] = useState(false);
+  const items = user?.platformAdmin ? [PLATFORM_NAV, ...NAV] : NAV;
 
   return (
     <>
@@ -52,7 +58,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           )}
         </div>
         <nav className="nav">
-          {NAV.map(({ href, label, icon: Icon }) => {
+          {items.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <Link

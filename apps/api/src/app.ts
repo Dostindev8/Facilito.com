@@ -11,6 +11,7 @@ import { inventoryRoutes } from './routes/inventory.routes.js';
 import { invoiceRoutes } from './routes/invoice.routes.js';
 import { businessRoutes } from './routes/business.routes.js';
 import { legacyRoutes } from './routes/legacy.routes.js';
+import { platformRoutes } from './routes/platform.routes.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const env = getEnv();
@@ -74,6 +75,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(invoiceRoutes);
   await app.register(businessRoutes);
   await app.register(legacyRoutes);
+  await app.register(platformRoutes);
 
   return app;
 }

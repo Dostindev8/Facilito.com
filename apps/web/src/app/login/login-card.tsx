@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { ArrowRight, Building2, KeyRound, Mail, ShieldCheck, TriangleAlert, User } from 'lucide-react';
 import { businessTypeError, parseInstagram } from '@facilito/domain/business-profile';
-import { ApiError, errorMessage, publicGet } from '@/lib/api';
+import { ApiError, errorMessage, publicGet, type SessionUser } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { safeNext } from '@/components/auth/auth-layout';
 import { PasswordInput, StrengthMeter } from '@/components/auth/password-input';
@@ -56,10 +56,11 @@ function IconInput({
 export function LoginCard() {
   const params = useSearchParams();
   const router = useRouter();
-  const { status, login, register } = useAuth();
+  const { status, user, login, register } = useAuth();
   const toast = useToast();
   const [tab, setTab] = useState<Tab>(params.get('tab') === 'registro' ? 'registro' : 'login');
-  const next = safeNext(params.get('next'));
+  const explicitNext = params.get('next');
+  const next = user?.platformAdmin && !explicitNext ? '/admin' : safeNext(explicitNext);
 
   useEffect(() => {
     if (status === 'authenticated') router.replace(next);
@@ -109,7 +110,12 @@ export function LoginCard() {
       </div>
       <div id="auth-panel" role="tabpanel" aria-labelledby={`auth-tab-${tab}`}>
         {tab === 'login' ? (
-          <LoginForm onDone={() => router.replace(next)} login={login} onGoogle={google} onRegister={() => switchTab('registro')} />
+          <LoginForm
+            onDone={(u) => router.replace(u.platformAdmin && !explicitNext ? '/admin' : next)}
+            login={login}
+            onGoogle={google}
+            onRegister={() => switchTab('registro')}
+          />
         ) : (
           <RegisterForm onDone={() => router.replace('/inicio')} register={register} onLogin={() => switchTab('login')} />
         )}
@@ -125,7 +131,7 @@ function LoginForm({
   onRegister,
 }: {
   login: ReturnType<typeof useAuth>['login'];
-  onDone: () => void;
+  onDone: (user: SessionUser) => void;
   onGoogle: () => void;
   onRegister: () => void;
 }) {
@@ -150,8 +156,7 @@ function LoginForm({
     }
     setBusy(true);
     try {
-      await login({ email: email.trim(), password, recordarme, ...(needTotp ? { totp } : {}) });
-      onDone();
+      onDone(await login({ email: email.trim(), password, recordarme, ...(needTotp ? { totp } : {}) }));
     } catch (err) {
       if (err instanceof ApiError && err.code === 'totp_required') {
         setNeedTotp(true);

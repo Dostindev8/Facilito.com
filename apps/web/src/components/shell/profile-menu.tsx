@@ -44,7 +44,7 @@ export function ProfileMenu({ user }: { user: SessionUser }) {
         </span>
         <span className="profile-meta">
           <strong>{user.nombre}</strong>
-          <small>{ROLE_LABEL[user.rol] ?? user.rol}</small>
+          <small>{user.platformAdmin ? 'Admin plataforma' : (ROLE_LABEL[user.rol] ?? user.rol)}</small>
         </span>
         <ChevronDown size={16} className="muted" aria-hidden />
         <span className="sr-only">Menú de perfil</span>
