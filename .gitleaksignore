@@ -1,2 +1,4 @@
 # CI-only dummy FIELD_ENCRYPTION_KEY ("test-field-encryption-key-32b"), not a real secret.
 66f4e974f651702831ec4c8cf50a698d4410c436:.github/workflows/ci.yml:generic-api-key:41
+# Throwaway password fixture in the platform-admin integration test, not a real secret.
+b35304ef2462fe4b2ac4eb4707d6bdbaa4d01880:apps/api/src/tests/platform.int.test.ts:generic-api-key:38

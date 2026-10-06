@@ -6,6 +6,7 @@ import { api, bootApp, refreshCookieFrom, register, shutdown, type Session } fro
 
 const ADMIN_EMAIL = 'Root.Admin@Facilito.test';
 const ADMIN_PASSWORD = 'PlataformaSegura2026';
+const ROTATED_PASSWORD = `${ADMIN_PASSWORD}-rotada`;
 const CSRF = { 'x-facilito-csrf': '1' };
 
 let app: FastifyInstance;
@@ -38,10 +39,10 @@ describe('provisioning', () => {
   });
 
   it('is idempotent: re-running keeps one account and rotates the password', async () => {
-    const r = await provisionPlatformAdmin({ email: ADMIN_EMAIL, password: 'OtraClave20261', nombre: 'Root' });
+    const r = await provisionPlatformAdmin({ email: ADMIN_EMAIL, password: ROTATED_PASSWORD, nombre: 'Root' });
     expect(r.created).toBe(false);
     expect((await login(ADMIN_EMAIL, ADMIN_PASSWORD)).statusCode).toBe(401);
-    expect((await login(ADMIN_EMAIL, 'OtraClave20261')).statusCode).toBe(200);
+    expect((await login(ADMIN_EMAIL, ROTATED_PASSWORD)).statusCode).toBe(200);
     await provisionPlatformAdmin({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, nombre: 'Root' });
     admin.token = (await login(ADMIN_EMAIL, ADMIN_PASSWORD)).json().accessToken;
   });
