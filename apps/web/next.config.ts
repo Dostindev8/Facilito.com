@@ -29,6 +29,8 @@ const nextConfig: NextConfig = {
     return [
       { source: '/panel', destination: '/inicio', permanent: false },
       { source: '/onboarding', destination: '/login?tab=registro', permanent: false },
+      { source: '/register', destination: '/login?tab=registro', permanent: false },
+      { source: '/modulos', destination: '/features', permanent: true },
     ];
   },
   async headers() {
