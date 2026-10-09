@@ -56,4 +56,6 @@ No producido. `Fondofacilito.mp4` no está en disco y ffmpeg no está instalado.
 
 ## Dependencias
 
-`pnpm audit --audit-level=high`: 5 avisos, todos previos a este trabajo (`sharp` < 0.35.5 vía raíz/api/next, `shell-quote` vía Expo en `apps/mobile`). Ninguno sale de `motion`, `lenis`, `zod`, `nodemailer`, `vitest` ni `@axe-core/playwright`.
+`pnpm audit --audit-level=high` sale con 0: quedan 1 moderado y 2 altos ya ignorados en `pnpm.auditConfig`. Dos avisos nuevos, ajenos a las dependencias del sitio, rompían el paso de audit de CI: `sharp` < 0.35.5 (CVE-2026-96889) y `shell-quote` < 1.11.0 vía Expo (GHSA-pqg4-j6r4-53mv). Se corrigieron con overrides en `package.json` raíz.
+
+CI del PR (`quality`): typecheck, lint, tests, build, e2e con Postgres, aislamiento, gitleaks y audit en verde. Preview de Vercel desplegado; está detrás de Vercel SSO, sin smoke anónimo.
