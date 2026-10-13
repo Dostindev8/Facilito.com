@@ -31,6 +31,7 @@ export {
   type InvoiceTotals,
 } from './invoice.js';
 export * from './business-profile.js';
+export * from './subscription.js';
 export {
   uuidSchema,
   moneyStringSchema,
