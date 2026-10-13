@@ -577,7 +577,8 @@ const ESTADOS = ['PENDIENTE_PAGO', 'PENDIENTE_AUTORIZACION', 'ACTIVA', 'EN_GRACI
 
 const subListQuery = pagination.extend({
   q: z.string().max(100).optional().default(''),
-  estado: z.enum(['todos', ...ESTADOS]).default('todos'),
+  /** `por_revisar`: the admin queue — new requests awaiting authorization plus renewals with an unreviewed receipt. */
+  estado: z.enum(['todos', 'por_revisar', ...ESTADOS]).default('todos'),
 });
 
 export async function listSubscriptions(actorId: string, query: unknown) {
@@ -593,7 +594,11 @@ export async function listSubscriptions(actorId: string, query: unknown) {
                   AND NOT EXISTS (SELECT 1 FROM billing.comprobante_revision rv WHERE rv.comprobante_id = c.id))::int AS comprobantes_pendientes,
               count(*) OVER ()::int AS total
          FROM billing.suscripcion s JOIN billing.plan p ON p.id = s.plan_id
-        WHERE ($1 = 'todos' OR s.estado = $1)
+        WHERE ($1 = 'todos' OR s.estado = $1
+               OR ($1 = 'por_revisar' AND (s.estado = 'PENDIENTE_AUTORIZACION'
+                   OR (s.tenant_id IS NOT NULL AND EXISTS (
+                         SELECT 1 FROM billing.comprobante c WHERE c.suscripcion_id = s.id
+                            AND NOT EXISTS (SELECT 1 FROM billing.comprobante_revision rv WHERE rv.comprobante_id = c.id))))))
           AND ($2 = '' OR lower(s.email) LIKE $3 OR lower(s.razon_social) LIKE $3 OR lower(s.nombre_contacto) LIKE $3)
         ORDER BY (s.estado = 'PENDIENTE_AUTORIZACION') DESC, s.created_at DESC, s.id
         LIMIT $4 OFFSET $5`,

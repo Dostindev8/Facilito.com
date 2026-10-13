@@ -306,6 +306,8 @@ describe('vencimiento, gracia, suspensión de solo lectura y renovación', () =>
       headers: { ...mp.headers, authorization: `Bearer ${o.token}` },
     });
     expect(report.statusCode).toBe(201);
+    const queue = (await adminApi().get('/v1/platform/subscriptions?estado=por_revisar')).json().items as Array<{ id: string }>;
+    expect(queue.some((s) => s.id === o.subId)).toBe(true);
     const pay = await adminApi().post(`/v1/platform/subscriptions/${o.subId}/payments`, {
       confirmar: true,
       montoCentavos: 149000,
@@ -315,6 +317,8 @@ describe('vencimiento, gracia, suspensión de solo lectura y renovación', () =>
     expect(pay.statusCode, pay.body).toBe(200);
     expect(pay.json().estado).toBe('ACTIVA');
     expect(new Date(pay.json().periodoFin).getTime()).toBeGreaterThan(Date.now() + 25 * 86_400_000);
+    const after = (await adminApi().get('/v1/platform/subscriptions?estado=por_revisar')).json().items as Array<{ id: string }>;
+    expect(after.some((s) => s.id === o.subId)).toBe(false);
     expect((await api(app, o).post('/v1/products', { nombre: 'Vendas', categoria: 'Farmacia', unidad: 'unidad', costo: '10.00', precioVenta: '15.00', stockInicial: '1', stockMin: '0' })).statusCode).toBe(201);
   });
 
