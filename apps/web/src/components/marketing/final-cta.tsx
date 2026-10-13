@@ -11,8 +11,8 @@ export function FinalCta() {
           <h2 id="cierre">{copy.final.title}</h2>
           <p>{copy.final.body}</p>
           <div className="mkt-actions">
-            <Link className="btn btn-primary" href={site.registerPath} prefetch={false}>
-              Empezar gratis
+            <Link className="btn btn-primary" href={site.subscribePath} prefetch={false}>
+              Suscribirme
             </Link>
             {wa ? (
               <a className="btn btn-accent" href={wa} target="_blank" rel="noopener noreferrer">

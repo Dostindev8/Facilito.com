@@ -17,6 +17,8 @@ export default function robots(): MetadataRoute.Robots {
         '/reportes',
         '/configuracion',
         '/admin',
+        '/suscripcion',
+        '/activar',
         '/notificaciones',
         '/recuperar',
         '/restablecer',

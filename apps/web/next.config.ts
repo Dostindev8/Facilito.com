@@ -28,8 +28,8 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: '/panel', destination: '/inicio', permanent: false },
-      { source: '/onboarding', destination: '/login?tab=registro', permanent: false },
-      { source: '/register', destination: '/login?tab=registro', permanent: false },
+      // Public sign-up was removed: accounts exist only after payment and admin authorization.
+      ...['/register', '/registro', '/signup', '/onboarding'].map((source) => ({ source, destination: '/suscribirme', statusCode: 301 as const })),
       { source: '/modulos', destination: '/features', permanent: true },
     ];
   },

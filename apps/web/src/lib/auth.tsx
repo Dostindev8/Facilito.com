@@ -17,16 +17,8 @@ interface AuthContextValue {
   status: Status;
   user: SessionUser | null;
   login: (input: { email: string; password: string; recordarme: boolean; totp?: string }) => Promise<SessionUser>;
-  register: (input: {
-    nombre: string;
-    email: string;
-    password: string;
-    razonSocial: string;
-    rnc: string;
-    tipoNegocio: string;
-    instagram?: string;
-    recordarme: boolean;
-  }) => Promise<SessionUser>;
+  /** Accounts are created by an admin after payment; the owner sets the password through a single-use invitation. */
+  acceptInvitation: (input: { token: string; password: string; recordarme: boolean }) => Promise<SessionUser>;
   logout: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
   can: (roles: readonly Role[]) => boolean;
@@ -50,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback<AuthContextValue['login']>((input) => authRequest('login', input), []);
-  const register = useCallback<AuthContextValue['register']>((input) => authRequest('register', input), []);
+  const acceptInvitation = useCallback<AuthContextValue['acceptInvitation']>((input) => authRequest('invitations/accept', input), []);
   const logout = useCallback(() => logoutRequest(), []);
   const switchTenant = useCallback(async (tenantId: string) => {
     await switchTenantRequest(tenantId);
@@ -58,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const can = useCallback((roles: readonly Role[]) => !!user && roles.includes(user.rol), [user]);
 
   const value = useMemo(
-    () => ({ status, user, login, register, logout, switchTenant, can }),
-    [status, user, login, register, logout, switchTenant, can],
+    () => ({ status, user, login, acceptInvitation, logout, switchTenant, can }),
+    [status, user, login, acceptInvitation, logout, switchTenant, can],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -70,11 +62,17 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
+/** Where a fresh session lands: platform admins go to the panel, everyone else to their business. */
+export function homeFor(user: Pick<SessionUser, 'platformAdmin'>): string {
+  return user.platformAdmin ? '/admin' : '/inicio';
+}
+
 export const ROLES = {
   inventoryWrite: ['owner', 'manager', 'warehouse'] as const,
   sell: ['owner', 'manager', 'cashier'] as const,
   void: ['owner', 'manager'] as const,
   admin: ['owner', 'manager'] as const,
+  owner: ['owner'] as const,
   reports: ['owner', 'manager', 'accountant'] as const,
   customers: ['owner', 'manager', 'cashier'] as const,
   suppliers: ['owner', 'manager', 'warehouse'] as const,

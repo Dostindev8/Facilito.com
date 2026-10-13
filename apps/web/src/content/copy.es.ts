@@ -3,9 +3,9 @@ export const copy = {
     title: 'Tu negocio, más fácil cada día.',
     subtitle:
       'Controla tus ventas, inventario y facturación desde un solo lugar. Hecho en República Dominicana, para negocios dominicanos.',
-    primary: 'Empezar gratis',
+    primary: 'Suscribirme',
     secondary: 'Pedir demo',
-    note: 'Crear la cuenta no pide tarjeta.',
+    note: 'Planes desde RD$690 al mes. Pagas por transferencia y activamos tu cuenta.',
   },
   pillars: [
     {
@@ -26,7 +26,7 @@ export const copy = {
     title: 'Cómo funciona',
     lead: 'Cuatro pasos. Sin manual de cien páginas.',
     steps: [
-      { n: '01', title: 'Crea tu cuenta', body: 'Nombre, correo y los datos de tu negocio. Entras directo al panel.' },
+      { n: '01', title: 'Elige tu plan', body: 'Llena los datos de tu negocio, paga por transferencia y te enviamos el enlace para entrar.' },
       { n: '02', title: 'Configura tu negocio', body: 'Productos, clientes y, si facturas con valor fiscal, tus secuencias de comprobantes.' },
       { n: '03', title: 'Empieza a vender', body: 'Registra la venta, descuenta el inventario y emite la factura desde el mismo flujo.' },
       { n: '04', title: 'Mira tus reportes', body: 'Revisa ventas, stock y facturas sin armar el Excel del mes.' },
@@ -41,7 +41,7 @@ export const copy = {
   manifesto: 'No más cuadernos. No más Excel perdidos. Solo tu negocio, en orden.',
   final: {
     title: 'Más tiempo para lo importante.',
-    body: 'Abre tu cuenta y prueba Facilito con tu propio negocio.',
+    body: 'Elige tu plan y empieza a usar Facilito con tu propio negocio.',
     whatsapp: 'Escribir por WhatsApp',
   },
 } as const;

@@ -11,9 +11,9 @@ export function WhatsAppButton() {
   );
 }
 
-export function RegisterCta({ children }: { children: string }) {
+export function SubscribeCta({ children }: { children: string }) {
   return (
-    <Link className="btn btn-primary" href={site.registerPath} prefetch={false}>
+    <Link className="btn btn-primary" href={site.subscribePath} prefetch={false}>
       {children}
     </Link>
   );

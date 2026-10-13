@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { plans, PRICES_CONFIRMED } from '@/content/pricing';
+import { formatDop, plans, PRICES_CONFIRMED } from '@/content/pricing';
 import { site } from '@/lib/site';
 
 export function PricingTable() {
@@ -7,7 +7,7 @@ export function PricingTable() {
     <>
       {!PRICES_CONFIRMED && (
         <p className="mkt-price-banner" role="note">
-          Precios de referencia. No son una oferta vigente: hay que confirmarlos con {site.maker} antes de contratar.
+          Precios en pesos dominicanos por mes. El monto exacto a transferir se confirma en tu solicitud antes de pagar.
         </p>
       )}
       <div className="mkt-prices">
@@ -15,7 +15,7 @@ export function PricingTable() {
           <article key={plan.id} className={`mkt-price${plan.featured ? ' featured' : ''}`}>
             <h2>{plan.name}</h2>
             <strong>
-              US${plan.priceUsd}
+              {formatDop(plan.priceDop)}
               <span style={{ fontSize: '1rem', fontWeight: 600 }}> / mes</span>
             </strong>
             <p>{plan.blurb}</p>
@@ -24,8 +24,8 @@ export function PricingTable() {
                 <li key={item}>{item}</li>
               ))}
             </ul>
-            <Link className="btn btn-primary" href={plan.id === 'gratis' ? site.registerPath : '/contacto?motivo=ventas'} prefetch={plan.id === 'gratis' ? false : undefined}>
-              {plan.cta}
+            <Link className="btn btn-primary" href={`${site.subscribePath}?plan=${plan.id}`} prefetch={false}>
+              Suscribirme
             </Link>
           </article>
         ))}

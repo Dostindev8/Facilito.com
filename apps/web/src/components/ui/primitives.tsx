@@ -37,10 +37,11 @@ export function EmptyState({ icon, title, detail, action }: { icon: ReactNode; t
 
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const network = error instanceof ApiError && error.isNetwork;
+  const title = !network ? 'No se pudo cargar' : error.code === 'timeout' ? 'El servidor tardó demasiado' : 'Sin conexión';
   return (
     <div className="empty error-state" role="alert">
       <div className="empty-icon">{network ? <WifiOff size={26} /> : <TriangleAlert size={26} />}</div>
-      <strong>{network ? 'Sin conexión' : 'No se pudo cargar'}</strong>
+      <strong>{title}</strong>
       <p>{errorMessage(error)}</p>
       {onRetry && (
         <button type="button" className="btn btn-outline" onClick={onRetry}>

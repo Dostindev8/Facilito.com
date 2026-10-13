@@ -40,7 +40,7 @@ export function Hero({ videoReady }: { videoReady: boolean }) {
         </h1>
         <p className="mkt-hero-lead">{copy.hero.subtitle}</p>
         <div className="mkt-actions">
-          <Link className="btn btn-primary" href={site.registerPath} prefetch={false}>
+          <Link className="btn btn-primary" href={site.subscribePath} prefetch={false}>
             {copy.hero.primary}
           </Link>
           <Link className="btn mkt-btn-light" href="/contacto?motivo=demo">

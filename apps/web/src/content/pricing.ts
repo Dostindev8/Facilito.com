@@ -1,77 +1,82 @@
 /**
- * CONFIRMAR PRECIOS
- * El producto no publica planes ni tarifas (revisión del repo, 7 oct 2026).
- * Estas cifras son referencia del brief comercial, no una oferta vigente.
- * No mostrarlas como precio cerrado hasta que Logic Code Spot las confirme.
+ * Mirrors `billing.plan` (migration 009). The checkout always charges the amount stored in the database,
+ * so a mismatch here only affects the marketing copy — keep both in sync when prices change.
+ * CONFIRMAR PRECIOS: Logic Code Spot todavía no confirma las tarifas ni si incluyen ITBIS
+ * (docs/audit/DECISIONES_PENDIENTES.md).
  */
 export const PRICES_CONFIRMED = false;
 
 export interface Plan {
-  id: 'gratis' | 'pro' | 'business';
+  id: 'inicial' | 'profesional' | 'negocio';
   name: string;
-  priceUsd: number;
+  priceDop: number;
   blurb: string;
   items: readonly string[];
-  cta: string;
   featured: boolean;
 }
 
 export const plans: readonly Plan[] = [
   {
-    id: 'gratis',
-    name: 'Gratis',
-    priceUsd: 0,
-    blurb: 'Para abrir la cuenta y probar el panel.',
-    items: ['Registro sin tarjeta', 'Ventas, inventario y facturas del producto actual', 'Un negocio'],
-    cta: 'Empezar gratis',
+    id: 'inicial',
+    name: 'Inicial',
+    priceDop: 690,
+    blurb: 'Para el negocio que empieza a organizar sus ventas.',
+    items: ['Ventas, facturación, inventario y reportes', 'Hasta 2 usuarios', 'Hasta 500 productos'],
     featured: false,
   },
   {
-    id: 'pro',
-    name: 'Pro',
-    priceUsd: 16,
-    blurb: 'Referencia para un negocio que ya vende todos los días.',
-    items: ['Todo lo del panel actual', 'Reportes', 'Soporte por el canal de contacto'],
-    cta: 'Pedir este plan',
+    id: 'profesional',
+    name: 'Profesional',
+    priceDop: 1490,
+    blurb: 'Para el negocio que ya vende todos los días.',
+    items: ['Todo lo de Inicial', 'Hasta 5 usuarios', 'Hasta 5,000 productos', 'Asistente Copilot'],
     featured: true,
   },
   {
-    id: 'business',
-    name: 'Business',
-    priceUsd: 39,
-    blurb: 'Referencia para quien opera con más de un punto.',
-    items: ['Todo lo de Pro', 'Acompañamiento para la puesta en marcha', 'Prioridad de respuesta'],
-    cta: 'Hablar con nosotros',
+    id: 'negocio',
+    name: 'Negocio',
+    priceDop: 2490,
+    blurb: 'Para equipos con varios empleados.',
+    items: ['Todo lo de Profesional', 'Hasta 15 usuarios', 'Productos ilimitados', 'Prioridad en soporte'],
     featured: false,
   },
 ];
 
 export const pricingFaqs = [
   {
-    question: '¿Estos precios ya están vigentes?',
+    question: '¿Cómo me suscribo?',
     answer:
-      'No. Son una referencia mientras Logic Code Spot confirma la oferta. El registro que existe hoy no cobra ni pide tarjeta en el formulario.',
+      'Elige un plan, llena los datos de tu negocio y paga por transferencia bancaria. Sube la foto o el PDF del comprobante y nuestro equipo lo verifica. Al aprobarlo te llega un enlace para crear tu contraseña.',
+  },
+  {
+    question: '¿Cuánto tarda la aprobación?',
+    answer: 'Revisamos los comprobantes en horario laborable. Puedes ver el estado de tu solicitud en cualquier momento con el enlace que te damos al suscribirte.',
+  },
+  {
+    question: '¿Puedo pagar con tarjeta?',
+    answer: 'Todavía no. Por ahora el pago es por transferencia bancaria. Cuando habilitemos el pago con tarjeta lo verás aquí.',
+  },
+  {
+    question: '¿Qué pasa si no renuevo a tiempo?',
+    answer:
+      'Tienes 7 días de gracia con todo funcionando. Después la cuenta pasa a solo lectura: puedes ver y exportar tus datos, pero no registrar ventas nuevas. Nunca borramos tus datos por falta de pago.',
+  },
+  {
+    question: '¿Puedo cancelar?',
+    answer: 'Sí, desde Suscripción en tu panel. Sigues usando Facilito hasta el final del mes que pagaste y no se renueva.',
   },
   {
     question: '¿Facilito ya envía comprobantes electrónicos a la DGII?',
     answer:
-      'No. Hoy puedes emitir facturas en el panel y configurar secuencias de comprobantes. El envío electrónico e-CF está marcado como próximamente y el servicio fiscal del producto sigue en modo de prueba, apagado.',
-  },
-  {
-    question: '¿Necesito tarjeta para crear la cuenta?',
-    answer: 'No. El formulario de registro pide tus datos y los del negocio. No pide tarjeta.',
-  },
-  {
-    question: '¿Puedo entrar con Google?',
-    answer: 'El botón está en la pantalla de acceso, pero el inicio con Google todavía no está disponible.',
+      'No. Hoy puedes emitir facturas en el panel y configurar secuencias de comprobantes. El envío electrónico e-CF está marcado como próximamente.',
   },
   {
     question: '¿Dónde quedan mis datos?',
     answer:
       'En la cuenta de tu negocio dentro de Facilito. El RNC y la cédula se guardan cifrados. La sesión de acceso usa una cookie httpOnly.',
   },
-  {
-    question: '¿Hay contrato anual?',
-    answer: 'No hay una oferta anual publicada. Cuando exista, se verá en esta página.',
-  },
 ] as const;
+
+export function formatDop(amount: number): string {
+  return `RD$${amount.toLocaleString('es-DO', { maximumFractionDigits: 0 })}`;
+}

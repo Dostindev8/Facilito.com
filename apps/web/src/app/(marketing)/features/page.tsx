@@ -1,6 +1,6 @@
 import { comingSoon, features } from '@/content/features';
 import { JsonLd } from '@/components/marketing/json-ld';
-import { RegisterCta } from '@/components/marketing/whatsapp-button';
+import { SubscribeCta } from '@/components/marketing/whatsapp-button';
 import { breadcrumbJsonLd, pageMeta } from '@/lib/seo';
 
 export const metadata = pageMeta({
@@ -31,7 +31,7 @@ export default function FeaturesPage() {
             <strong>Con Facilito. </strong>
             {feature.solution}
           </p>
-          <RegisterCta>Empezar gratis</RegisterCta>
+          <SubscribeCta>Ver planes y suscribirme</SubscribeCta>
         </article>
       ))}
       <h2 style={{ marginTop: 36 }}>Próximamente</h2>

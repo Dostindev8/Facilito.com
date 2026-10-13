@@ -6,7 +6,7 @@ import { breadcrumbJsonLd, faqJsonLd, pageMeta } from '@/lib/seo';
 
 export const metadata = pageMeta({
   title: 'Precios',
-  description: 'Referencia de planes de Facilito. Los precios publicados aquí no están confirmados como oferta vigente.',
+  description: 'Planes mensuales de Facilito en pesos dominicanos. Pagas por transferencia y activamos tu cuenta.',
   path: '/precios',
 });
 
@@ -21,7 +21,7 @@ export default function PricingPage() {
       />
       <JsonLd data={faqJsonLd([...pricingFaqs])} />
       <h1>Precios</h1>
-      <p>Una sola tabla, con los números marcados como referencia hasta que se confirmen.</p>
+      <p>Un plan mensual, sin contrato. Cancelas cuando quieras desde tu panel.</p>
       <PricingTable />
       <h2 style={{ marginTop: 40 }}>Preguntas frecuentes</h2>
       <PricingFaq />

@@ -18,6 +18,7 @@ export default function PrivacyPage() {
       <ul>
         <li>Cuenta: nombre, correo, contraseña (almacenada como secreto, no en texto plano) y, si lo activas, un segundo factor.</li>
         <li>Negocio: razón social, RNC o cédula, tipo de negocio. El RNC y la cédula se cifran en reposo.</li>
+        <li>Suscripción: plan, teléfono de contacto, referencia y comprobante de la transferencia (foto o PDF) que subes para verificar el pago, y el historial de pagos y reembolsos.</li>
         <li>Operación: productos, inventario, clientes, proveedores, facturas y reportes que tú cargas.</li>
         <li>Contacto público: nombre, celular, correo, tipo de negocio y mensaje del formulario.</li>
         <li>Técnicos: dirección IP usada para limitar abusos del formulario, y la cookie de sesión después de entrar.</li>
@@ -29,7 +30,7 @@ export default function PrivacyPage() {
         La cuenta y la operación del negocio se tratan para ejecutar el servicio que pides. El formulario de contacto se trata para responderte. La seguridad (cifrado, límite de intentos, cookie httpOnly) se trata para proteger la cuenta. Cuando una norma fiscal exija conservar comprobantes, esa conservación sigue esa norma.
       </p>
       <h2>Cuánto tiempo</h2>
-      <p>Los datos de la cuenta viven mientras la cuenta exista. Las facturas y comprobantes se conservan el tiempo que exija la normativa fiscal dominicana vigente. Los mensajes de contacto se conservan el tiempo necesario para responder y dar seguimiento, y luego se borran o anonimizan.</p>
+      <p>Los datos de la cuenta viven mientras la cuenta exista. Las facturas y comprobantes se conservan el tiempo que exija la normativa fiscal dominicana vigente. Los pagos de la suscripción y sus comprobantes de transferencia se conservan como registro contable y no se editan ni se borran. Los mensajes de contacto se conservan el tiempo necesario para responder y dar seguimiento, y luego se borran o anonimizan.</p>
       <h2>Con quién se comparten</h2>
       <p>Con quien opera el alojamiento y el correo que {site.maker} contrate para prestar el servicio, y con una autoridad cuando una ley dominicana lo exija. No hay cesión comercial a anunciantes.</p>
       <h2>Tus derechos</h2>

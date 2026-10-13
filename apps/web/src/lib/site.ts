@@ -33,7 +33,8 @@ export const site = {
   email: process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() ?? '',
   /** Digits only, country code included. Empty until the business publishes a line. */
   whatsappE164: (process.env.NEXT_PUBLIC_WHATSAPP_E164 ?? '').replace(/\D/g, ''),
-  registerPath: '/register',
+  /** There is no self sign-up: new businesses pay, an admin authorizes, and the owner gets an invitation. */
+  subscribePath: '/suscribirme',
   loginPath: '/login',
   panelPath: '/inicio',
 } as const;

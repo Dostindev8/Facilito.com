@@ -75,8 +75,8 @@ export function SiteHeader() {
             <Link className="mkt-login-link" href={site.loginPath} prefetch={false}>
               Iniciar sesión
             </Link>
-            <Link className="btn btn-primary" href={site.registerPath} prefetch={false}>
-              Empezar gratis
+            <Link className="btn btn-primary" href={site.subscribePath} prefetch={false}>
+              Suscribirme
             </Link>
           </>
         )}
