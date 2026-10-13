@@ -1,4 +1,4 @@
-// Verifies the Login/Register animated background against a running web build.
+// Verifies the animated background of the auth screens (login, account activation) against a running web build.
 // Usage: node scripts/verify-auth-bg.mjs  (E2E_BASE_URL defaults to http://localhost:3000; SHOTS=1 saves screenshots)
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,7 @@ import sharp from 'sharp';
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const WIDTHS = [320, 375, 414, 768, 1024, 1440, 1920];
 const HEIGHT = { 320: 640, 375: 812, 414: 896, 768: 1024, 1024: 768, 1440: 900, 1920: 1080 };
-const PAGES = ['/login', '/login?tab=registro'];
+const PAGES = ['/login', '/activar'];
 const SHOTS = process.env.SHOTS === '1';
 const SHOT_DIR = path.resolve('test-results', 'auth-bg');
 const MIN_TEXT_CONTRAST = 4.5;

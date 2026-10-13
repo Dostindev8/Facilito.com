@@ -1,26 +1,35 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
-const publicRoutes = ['/', '/features', '/precios', '/contacto', '/nosotros', '/legal/privacidad', '/legal/terminos', '/legal/cookies'];
+const publicRoutes = ['/', '/features', '/precios', '/suscribirme', '/contacto', '/nosotros', '/legal/privacidad', '/legal/terminos', '/legal/cookies'];
 const widths = [375, 768, 1280, 1536];
 
-test('la home tiene un solo h1 y el CTA abre el registro', async ({ page }) => {
+test('la home tiene un solo h1 y el CTA lleva a suscribirse', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Tu negocio, más fácil cada día');
-  await page.getByRole('link', { name: 'Empezar gratis' }).first().click();
-  await expect(page).toHaveURL(/\/login\?tab=registro/);
-  await expect(page.getByRole('tab', { name: 'Registrarse' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByLabel('Tu nombre')).toBeVisible();
-  await expect(page.getByLabel('Nombre del negocio')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Empezar gratis' })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Suscribirme' }).first().click();
+  await expect(page).toHaveURL(/\/suscribirme/);
+  await expect(page.getByRole('button', { name: /^Elegir / })).toHaveCount(3);
 });
 
-test('login muestra correo, contraseña y Google sin cambiar el flujo', async ({ page }) => {
+test('precios: cada plan abre el checkout con ese plan elegido', async ({ page }) => {
+  await page.goto('/precios');
+  const ctas = page.locator('a[href^="/suscribirme?plan="]');
+  await expect(ctas).toHaveCount(3);
+  await ctas.nth(2).click();
+  await expect(page).toHaveURL(/\/suscribirme\?plan=negocio/);
+  await expect(page.getByText(/Plan elegido:/)).toContainText('Negocio');
+});
+
+test('login muestra correo y contraseña, sin registro ni Google', async ({ page }) => {
   await page.goto('/login');
   await expect(page.getByLabel('Correo electrónico')).toBeVisible();
   await expect(page.getByLabel('Contraseña', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Iniciar sesión/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Continuar con Google/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Continuar con Google/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Crear cuenta/ })).toHaveCount(0);
   await page.getByRole('button', { name: /^Iniciar sesión/ }).click();
   await expect(page.getByText('Ingresa tu email')).toBeVisible();
 });
@@ -28,7 +37,7 @@ test('login muestra correo, contraseña y Google sin cambiar el flujo', async ({
 for (const width of widths) {
   test(`sin scroll horizontal a ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    for (const route of ['/', '/features', '/precios', '/contacto']) {
+    for (const route of ['/', '/features', '/precios', '/suscribirme', '/contacto']) {
       await page.goto(route);
       const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1);
       expect(fits, route).toBe(true);
@@ -88,7 +97,7 @@ test('reduced motion no monta el video', async ({ browser }) => {
 });
 
 test('saveData no pide el video', async ({ page }) => {
-  const videoRequests = [];
+  const videoRequests: string[] = [];
   page.on('request', (request) => {
     if (request.url().includes('/media/') && request.url().includes('loop')) videoRequests.push(request.url());
   });
