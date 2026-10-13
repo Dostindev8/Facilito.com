@@ -135,8 +135,11 @@ export function decryptTotpSecret(enc: string): string {
   return decryptField(enc);
 }
 
+/** One step either side absorbs phone clock drift; the login path blocks replays inside that window. */
+const totpVerifier = authenticator.clone({ window: 1 });
+
 export function verifyTotp(secret: string, token: string): boolean {
-  return authenticator.verify({ token, secret });
+  return totpVerifier.verify({ token, secret });
 }
 
 export async function hashPin(pin: string): Promise<string> {

@@ -3,7 +3,8 @@ import { authenticator } from 'otplib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withPlatformAdmin } from '../db/client.js';
 import { provisionPlatformAdmin } from '../db/platform-admin.js';
-import { api, bootApp, platformAdminSession, refreshCookieFrom, register, shutdown, type Session } from './helpers.js';
+import { __resetMemoryCacheForTests } from '../utils/cache.js';
+import { api, bootApp, platformAdminSession, refreshCookieFrom, register, shutdown, totpCode, type Session } from './helpers.js';
 
 const ADMIN_EMAIL = 'Root.Admin@Facilito.test';
 const ADMIN_PASSWORD = 'PlataformaSegura2026';
@@ -29,7 +30,7 @@ afterAll(async () => {
 
 describe('provisioning', () => {
   it('logs in with the second factor, with platform flag and an internal workspace', async () => {
-    const res = await login(ADMIN_EMAIL.toLowerCase(), ADMIN_PASSWORD, authenticator.generate(admin.totpSecret));
+    const res = await login(ADMIN_EMAIL.toLowerCase(), ADMIN_PASSWORD, totpCode(admin.totpSecret, 1));
     expect(res.json().user).toMatchObject({ platformAdmin: true, mfa: true, rol: 'owner', negocio: 'Facilito · Administración' });
     const s = await api(app, admin).get('/v1/settings');
     expect(s.statusCode).toBe(200);
@@ -61,14 +62,35 @@ describe('provisioning', () => {
     expect((await api(app, { token: again.json().accessToken }).get('/v1/platform/stats')).statusCode).toBe(200);
   });
 
+  it('a TOTP code opens one session only: replaying it inside its window is refused', async () => {
+    const email = 'replay.mfa@facilito.test';
+    const other = await platformAdminSession(app, email, ADMIN_PASSWORD);
+    const code = totpCode(other.totpSecret, 1);
+    expect((await login(email, ADMIN_PASSWORD, code)).statusCode).toBe(200);
+    const replay = await login(email, ADMIN_PASSWORD, code);
+    expect(replay.statusCode).toBe(401);
+    expect(replay.json().code).toBe('auth');
+  });
+
+  it('lost-device recovery removes the second factor and the admin must enrol again', async () => {
+    const email = 'perdio.telefono@facilito.test';
+    await platformAdminSession(app, email, ADMIN_PASSWORD);
+    await provisionPlatformAdmin({ email, password: ADMIN_PASSWORD, nombre: 'Recupera', resetTotp: true });
+    const res = await login(email, ADMIN_PASSWORD);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().user).toMatchObject({ platformAdmin: true, mfa: false });
+    expect((await api(app, { token: res.json().accessToken }).get('/v1/platform/stats')).json().code).toBe('mfa_required');
+  });
+
   it('is idempotent: re-running keeps one account and rotates the password', async () => {
+    // Earlier tests spent this admin's codes; the replay guard forgets them once their window has passed.
+    __resetMemoryCacheForTests();
     const r = await provisionPlatformAdmin({ email: ADMIN_EMAIL, password: ROTATED_PASSWORD, nombre: 'Root' });
     expect(r.created).toBe(false);
-    const code = () => authenticator.generate(admin.totpSecret);
-    expect((await login(ADMIN_EMAIL, ADMIN_PASSWORD, code())).statusCode).toBe(401);
-    expect((await login(ADMIN_EMAIL, ROTATED_PASSWORD, code())).statusCode).toBe(200);
+    expect((await login(ADMIN_EMAIL, ADMIN_PASSWORD, totpCode(admin.totpSecret))).statusCode).toBe(401);
+    expect((await login(ADMIN_EMAIL, ROTATED_PASSWORD, totpCode(admin.totpSecret))).statusCode).toBe(200);
     await provisionPlatformAdmin({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, nombre: 'Root' });
-    admin.token = (await login(ADMIN_EMAIL, ADMIN_PASSWORD, code())).json().accessToken;
+    admin.token = (await login(ADMIN_EMAIL, ADMIN_PASSWORD, totpCode(admin.totpSecret, 1))).json().accessToken;
   });
 
   it('regular sessions are not platform admins', async () => {

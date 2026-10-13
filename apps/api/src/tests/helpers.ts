@@ -101,6 +101,11 @@ function normalizeInstagram(raw: string): string | null {
   return parsed.success ? (parsed.data ?? null) : null;
 }
 
+/** TOTP code for the current step, or a neighbouring one (±1 is accepted) so a test can log in again without replaying. */
+export function totpCode(secret: string, stepOffset = 0): string {
+  return authenticator.clone({ epoch: Date.now() + stepOffset * 30_000 }).generate(secret);
+}
+
 /**
  * A platform admin with TOTP enrolled, logged in with the second factor (the panel refuses sessions without it).
  * Returns the TOTP secret so tests can produce fresh codes.

@@ -206,6 +206,8 @@ async function issueSession(
 /* ───────────── Login with progressive lockout ───────────── */
 
 const MAX_LOCK_SECONDS = 24 * 60 * 60;
+/** Covers the ±1 step verification window (3 × 30 s) with margin. */
+const TOTP_REPLAY_TTL_SECONDS = 120;
 
 function lockKeys(email: string, ip: string) {
   const h = sha256(email);
@@ -271,6 +273,8 @@ export async function login(input: unknown, ip: string, device: DeviceHint = {})
       throw new AppError(401, '2FA requerido', 'Ingresa el código de tu app de autenticación.', 'totp_required');
     }
     if (!verifyTotp(decryptTotpSecret(persona.totp_secret_enc), data.totp)) return fail();
+    // A code stays valid for the whole verification window; once used it must not open a second session.
+    if ((await counterIncr(`totp:used:${persona.id}:${data.totp}`, TOTP_REPLAY_TTL_SECONDS)) > 1) return fail();
     mfa = true;
   }
   // Only revealed after the password proved ownership, so it cannot be used to probe accounts.
