@@ -32,4 +32,12 @@ Cuando exista el dominio propio, `NEXT_PUBLIC_SITE_URL=https://facilito.do` (o e
 
 ## Auth
 
-No cambies `src/lib/auth.tsx`, cookies, callbacks ni validaciones del login para “mejorar” el sitio. El registro de verdad es `/login?tab=registro`.
+No cambies `src/lib/auth.tsx`, cookies, callbacks ni validaciones del login para “mejorar” el sitio. No hay registro público: una cuenta nace en `/suscribirme` (plan, datos y comprobante de transferencia), un administrador la autoriza en `/admin` y el dueño crea su contraseña en `/activar` con el enlace de un solo uso. `/register`, `/registro`, `/signup` y `/onboarding` responden 301 a `/suscribirme`.
+
+### Pruebas sin registro
+
+E2E, `scripts/e2e-api-smoke.mjs` y `scripts/lighthouse-authed.mjs` crean dueños por ese mismo flujo (`scripts/lib/e2e-accounts.mjs`). Playwright arranca la API con datos bancarios de prueba y un administrador E2E sin 2FA (`E2E_PLATFORM_ADMIN_*`, rechazado en producción); el setup global le enrola un TOTP nuevo en cada corrida. Si reutilizas una API ya levantada, arráncala con esas mismas variables. Los scripts se niegan a correr contra un host que no sea local porque cada autorización registra un cobro en el ledger.
+
+### Recuperar el 2FA de un administrador
+
+Si un administrador pierde el teléfono: `PLATFORM_ADMIN_EMAIL=… PLATFORM_ADMIN_PASSWORD=<nueva> PLATFORM_ADMIN_RESET_TOTP=1 pnpm --filter @facilito/api platform:admin` con `DATABASE_ADMIN_URL`. Quita el segundo factor, cambia la contraseña y cierra todas sus sesiones; al entrar, el panel le pide enrolar un autenticador nuevo. No existe vía HTTP para esto a propósito.
