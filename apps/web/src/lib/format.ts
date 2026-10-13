@@ -40,6 +40,11 @@ export function dateLong(iso: string): string {
   );
 }
 
+/** Long date of an instant (ISO timestamp) as seen in the business time zone; `dateLong` takes a bare YYYY-MM-DD. */
+export function instantLong(iso: string | Date): string {
+  return new Intl.DateTimeFormat('es-DO', { timeZone: TZ, day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
+}
+
 export function dateShort(iso: string | Date): string {
   return new Intl.DateTimeFormat('es-DO', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric' }).format(
     new Date(iso),

@@ -10,6 +10,7 @@ import { Sidebar } from './sidebar';
 import { SearchBox } from './search-box';
 import { NotificationsMenu } from './notifications';
 import { ProfileMenu } from './profile-menu';
+import { SubscriptionBanner } from './subscription-banner';
 
 export const APP_VERSION = '1.0.0';
 
@@ -72,6 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <ProfileMenu user={user} />
           </div>
         </header>
+        <SubscriptionBanner user={user} />
         <main id="main" className="content" key={user.tenantId}>
           <div key={pathname} className="route-fade">
             {children}

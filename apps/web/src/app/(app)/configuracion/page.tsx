@@ -7,6 +7,7 @@ import { businessTypeError, parseInstagram } from '@facilito/domain/business-pro
 import { ApiError, api, errorMessage, refreshSession } from '@/lib/api';
 import { ROLES, useAuth } from '@/lib/auth';
 import { useAsync } from '@/lib/hooks';
+import { relativeTime } from '@/lib/format';
 import { PasswordInput, StrengthMeter } from '@/components/auth/password-input';
 import { BusinessTypeField, InstagramField } from '@/components/ui/business-fields';
 import { ConfirmDialog, ErrorState, SelectInput, Skeleton, Spinner, Tabs, TextInput, fieldErrorMap } from '@/components/ui/primitives';
@@ -553,6 +554,8 @@ function NcfTab({ ncf, onSaved, readOnly }: { ncf: NcfConfig; onSaved: () => voi
 
 function SecurityTab() {
   const toast = useToast();
+  const { logout } = useAuth();
+  const router = useRouter();
   const me = useAsync(() => api<{ totpEnabled: boolean; email: string }>('/v1/me'), []);
   const [setup, setSetup] = useState<{ secret: string; otpauth: string } | null>(null);
   const [code, setCode] = useState('');
@@ -581,10 +584,10 @@ function SecurityTab() {
     setError(null);
     try {
       await api('/v1/auth/totp/verify', { method: 'POST', body: { code } });
-      toast.success('Verificación en dos pasos activada');
-      setSetup(null);
-      setCode('');
-      me.reload();
+      // The API closes every session so the next login proves the second factor.
+      toast.success('Verificación en dos pasos activada', 'Inicia sesión de nuevo con tu código.');
+      await logout();
+      router.replace('/login');
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -650,7 +653,110 @@ function SecurityTab() {
         </div>
       )}
     </section>
+    <SessionsCard />
     </>
+  );
+}
+
+interface ActiveSession {
+  id: string;
+  inicio: string;
+  ultimaActividad: string;
+  vence: string;
+  dispositivo: string | null;
+  ip: string | null;
+  actual: boolean;
+}
+
+function deviceLabel(ua: string | null): string {
+  if (!ua) return 'Dispositivo desconocido';
+  const os = /iPhone|iPad/.test(ua) ? 'iPhone/iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Otro';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Navegador';
+  return `${browser} en ${os}`;
+}
+
+function SessionsCard() {
+  const toast = useToast();
+  const list = useAsync(() => api<{ items: ActiveSession[] }>('/v1/auth/sessions'), []);
+  const [closing, setClosing] = useState<ActiveSession | 'others' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const others = list.data?.items.filter((s) => !s.actual).length ?? 0;
+
+  const confirm = async () => {
+    if (!closing) return;
+    setBusy(true);
+    try {
+      if (closing === 'others') {
+        const r = await api<{ cerradas: number }>('/v1/auth/sessions/revoke-others', { method: 'POST', headers: { 'x-facilito-csrf': '1' } });
+        toast.success('Sesiones cerradas', r.cerradas ? `Cerramos ${r.cerradas} ${r.cerradas === 1 ? 'sesión' : 'sesiones'}.` : 'No había otras sesiones abiertas.');
+      } else {
+        await api(`/v1/auth/sessions/${closing.id}/revoke`, { method: 'POST', headers: { 'x-facilito-csrf': '1' } });
+        toast.success('Sesión cerrada', deviceLabel(closing.dispositivo));
+      }
+      setClosing(null);
+      list.reload();
+    } catch (e) {
+      toast.error('No se pudo cerrar', errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="card stack" style={{ maxWidth: 640 }} aria-labelledby="sessions-title">
+      <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <strong id="sessions-title">Sesiones abiertas</strong>
+          <p className="muted" style={{ fontSize: '0.88rem' }}>Dispositivos donde tu cuenta está iniciada. Cierra los que no reconozcas.</p>
+        </div>
+        {others > 0 && (
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => setClosing('others')}>
+            Cerrar las demás
+          </button>
+        )}
+      </div>
+      {list.error ? (
+        <ErrorState error={list.error} onRetry={list.reload} />
+      ) : !list.data ? (
+        <Skeleton h={96} />
+      ) : (
+        <ul className="session-list">
+          {list.data.items.map((s) => (
+            <li key={s.id}>
+              <div>
+                <strong>{deviceLabel(s.dispositivo)}</strong>
+                {s.actual && <span className="badge badge-green">Este dispositivo</span>}
+                <span className="muted">
+                  Activa {relativeTime(s.ultimaActividad)}
+                  {s.ip ? ` · IP ${s.ip}` : ''}
+                </span>
+              </div>
+              {!s.actual && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setClosing(s)} aria-label={`Cerrar sesión en ${deviceLabel(s.dispositivo)}`}>
+                  Cerrar
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <ConfirmDialog
+        open={!!closing}
+        title={closing === 'others' ? 'Cerrar las demás sesiones' : 'Cerrar sesión'}
+        message={
+          closing === 'others'
+            ? 'Todos los demás dispositivos tendrán que iniciar sesión otra vez. Este sigue abierto.'
+            : closing
+              ? `${deviceLabel(closing.dispositivo)} tendrá que iniciar sesión otra vez.`
+              : ''
+        }
+        confirmLabel="Cerrar sesión"
+        tone="danger"
+        busy={busy}
+        onConfirm={confirm}
+        onClose={() => setClosing(null)}
+      />
+    </section>
   );
 }
 
