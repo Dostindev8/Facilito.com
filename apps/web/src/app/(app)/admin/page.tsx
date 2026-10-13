@@ -1,11 +1,18 @@
 'use client';
 
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Activity, Ban, Building2, CircleCheck, History, Lock, Search, ShieldCheck, UserCheck, Users } from 'lucide-react';
-import { api, errorMessage } from '@/lib/api';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState, type FormEvent } from 'react';
+import { Activity, Ban, Building2, CircleCheck, CreditCard, History, Inbox, Lock, ShieldCheck, UserCheck, Users } from 'lucide-react';
+import { api, errorMessage, type SubscriptionState } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { dateShort, dateTime, relativeTime } from '@/lib/format';
 import { useAsync, useDebounced } from '@/lib/hooks';
+import { dop, StateBadge } from '@/components/billing/billing-ui';
+import { FinancePanel } from '@/components/admin/finance-panel';
+import { HealthPanel } from '@/components/admin/health-panel';
+import { MfaGate } from '@/components/admin/mfa-gate';
+import { SearchBar } from '@/components/admin/search-bar';
+import { SubscriptionsPanel } from '@/components/admin/subscriptions-panel';
 import {
   Badge,
   ConfirmDialog,
@@ -18,6 +25,7 @@ import {
   Spinner,
   Tabs,
   TextArea,
+  TextInput,
 } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 
@@ -29,6 +37,8 @@ interface Stats {
   negocios: number;
   negociosNuevos30d: number;
   negociosSuspendidos: number;
+  solicitudesPendientes: number;
+  comprobantesPendientes: number;
 }
 
 interface PlatformUser {
@@ -56,13 +66,15 @@ interface PlatformBusiness {
   ownerEmail: string | null;
   ownerNombre: string | null;
   miembros: number;
+  suscripcionId: string | null;
+  suscripcionEstado: SubscriptionState | null;
 }
 
 interface ActivityItem {
   id: string;
-  action: 'persona.block' | 'persona.unblock' | 'negocio.suspend' | 'negocio.reactivate';
+  action: string;
   targetLabel: string | null;
-  detail: { motivo?: string };
+  detail: { motivo?: string; montoCentavos?: number };
   actorEmail: string;
   createdAt: string;
 }
@@ -74,7 +86,8 @@ interface Page<T> {
   pageSize: number;
 }
 
-type Tab = 'usuarios' | 'negocios' | 'actividad';
+type Tab = 'solicitudes' | 'suscripciones' | 'finanzas' | 'negocios' | 'usuarios' | 'actividad' | 'salud';
+const TABS: Tab[] = ['solicitudes', 'suscripciones', 'finanzas', 'negocios', 'usuarios', 'actividad', 'salud'];
 
 const ROL_LABEL: Record<string, string> = {
   owner: 'Dueño',
@@ -85,18 +98,52 @@ const ROL_LABEL: Record<string, string> = {
   viewer: 'Consulta',
 };
 
-const ACTION_LABEL: Record<ActivityItem['action'], string> = {
+const ACTION_LABEL: Record<string, string> = {
   'persona.block': 'Bloqueó al usuario',
   'persona.unblock': 'Habilitó al usuario',
   'negocio.suspend': 'Suspendió el negocio',
   'negocio.reactivate': 'Reactivó el negocio',
+  'suscripcion.autorizar': 'Autorizó la suscripción de',
+  'suscripcion.rechazar': 'Rechazó la solicitud de',
+  'suscripcion.reenviar': 'Reenvió la invitación a',
+  'suscripcion.pago': 'Registró un pago de',
+  'suscripcion.reembolso': 'Registró un reembolso a',
+  'suscripcion.plan': 'Cambió el plan de',
+  'suscripcion.suspender': 'Suspendió la suscripción de',
+  'suscripcion.reactivar': 'Reactivó la suscripción de',
+  'suscripcion.cancelar': 'Canceló la suscripción de',
+  'suscripcion.asignar': 'Asignó un plan a',
+  'suscripcion.comprobante': 'Rechazó un comprobante de',
+  'suscripcion.barrido': 'Ejecutó el barrido de vencimientos',
 };
 
 export default function PlatformAdminPage() {
+  return (
+    <Suspense fallback={<Skeleton h={240} />}>
+      <PlatformAdmin />
+    </Suspense>
+  );
+}
+
+function PlatformAdmin() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<Tab>('usuarios');
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const tabParam = params.get('tab') as Tab | null;
+  const [tab, setTab] = useState<Tab>(tabParam && TABS.includes(tabParam) ? tabParam : 'solicitudes');
   const isAdmin = !!user?.platformAdmin;
-  const stats = useAsync(() => (isAdmin ? api<Stats>('/v1/platform/stats') : Promise.resolve(undefined)), [isAdmin]);
+  const ready = isAdmin && !!user?.mfa;
+  const stats = useAsync(() => (ready ? api<Stats>('/v1/platform/stats') : Promise.resolve(undefined)), [ready]);
+
+  useEffect(() => {
+    if (tabParam && TABS.includes(tabParam)) setTab(tabParam);
+  }, [tabParam]);
+
+  const changeTab = (t: Tab) => {
+    setTab(t);
+    router.replace(`${pathname}?tab=${t}`, { scroll: false });
+  };
 
   if (!isAdmin) {
     return (
@@ -105,22 +152,30 @@ export default function PlatformAdminPage() {
       </div>
     );
   }
+  if (!user?.mfa) return <MfaGate />;
 
   const s = stats.data;
+  const porRevisar = s ? s.solicitudesPendientes + s.comprobantesPendientes : undefined;
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Administración de Facilito</h1>
-          <p>Todas las cuentas y negocios registrados. Cada bloqueo queda registrado en la actividad.</p>
+          <p>Solicitudes, suscripciones, pagos y cuentas. Cada acción queda registrada en la actividad.</p>
         </div>
       </div>
 
       <div className="stat-row" aria-busy={stats.loading}>
         {[
-          { label: 'Usuarios registrados', value: s?.usuarios, extra: s ? `+${s.usuariosNuevos30d} en 30 días` : null, icon: Users, tone: 'tone-blue' },
+          {
+            label: 'Por revisar',
+            value: porRevisar,
+            extra: s ? `${s.solicitudesPendientes} solicitudes · ${s.comprobantesPendientes} renovaciones` : null,
+            icon: Inbox,
+            tone: porRevisar ? 'tone-orange' : 'tone-green',
+          },
           { label: 'Negocios', value: s?.negocios, extra: s ? `+${s.negociosNuevos30d} en 30 días` : null, icon: Building2, tone: 'tone-green' },
-          { label: 'Activos (7 días)', value: s?.activos7d, extra: 'con sesión iniciada', icon: Activity, tone: 'tone-purple' },
+          { label: 'Usuarios', value: s?.usuarios, extra: s ? `${s.activos7d} activos en 7 días` : null, icon: Users, tone: 'tone-blue' },
           {
             label: 'Bloqueados / suspendidos',
             value: s ? `${s.usuariosBloqueados} / ${s.negociosSuspendidos}` : undefined,
@@ -147,35 +202,28 @@ export default function PlatformAdminPage() {
         <Tabs
           label="Secciones de administración"
           value={tab}
-          onChange={setTab}
+          onChange={changeTab}
           items={[
-            { value: 'usuarios', label: 'Usuarios', count: s?.usuarios },
+            { value: 'solicitudes', label: 'Por revisar', count: porRevisar },
+            { value: 'suscripciones', label: 'Suscripciones' },
+            { value: 'finanzas', label: 'Finanzas' },
             { value: 'negocios', label: 'Negocios', count: s?.negocios },
+            { value: 'usuarios', label: 'Usuarios', count: s?.usuarios },
             { value: 'actividad', label: 'Actividad' },
+            { value: 'salud', label: 'Salud' },
           ]}
         />
         <div style={{ marginTop: 16 }}>
+          {tab === 'solicitudes' && <SubscriptionsPanel queue onChanged={stats.reload} />}
+          {tab === 'suscripciones' && <SubscriptionsPanel onChanged={stats.reload} />}
+          {tab === 'finanzas' && <FinancePanel />}
           {tab === 'usuarios' && <UsersPanel onChanged={stats.reload} />}
           {tab === 'negocios' && <BusinessesPanel onChanged={stats.reload} />}
           {tab === 'actividad' && <ActivityPanel />}
+          {tab === 'salud' && <HealthPanel />}
         </div>
       </section>
     </>
-  );
-}
-
-function SearchBar({ id, value, onChange, placeholder, children }: { id: string; value: string; onChange: (v: string) => void; placeholder: string; children?: ReactNode }) {
-  return (
-    <div className="toolbar" style={{ marginBottom: 16, gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-      <div className="search" style={{ flex: '1 1 260px' }}>
-        <Search size={18} aria-hidden />
-        <label htmlFor={id} className="sr-only">
-          Buscar
-        </label>
-        <input id={id} type="search" className="input" placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} maxLength={100} />
-      </div>
-      {children}
-    </div>
   );
 }
 
@@ -411,6 +459,7 @@ function BusinessesPanel({ onChanged }: { onChanged: () => void }) {
   const dq = useDebounced(q.trim(), 300);
   const [suspending, setSuspending] = useState<PlatformBusiness | null>(null);
   const [reactivating, setReactivating] = useState<PlatformBusiness | null>(null);
+  const [assigning, setAssigning] = useState<PlatformBusiness | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => setPage(1), [dq, estado]);
@@ -467,9 +516,9 @@ function BusinessesPanel({ onChanged }: { onChanged: () => void }) {
                 <tr>
                   <th style={{ minWidth: 200 }}>Negocio</th>
                   <th style={{ minWidth: 220 }}>Dueño</th>
-                  <th>Tipo</th>
                   <th>Miembros</th>
                   <th>Registro</th>
+                  <th>Suscripción</th>
                   <th>Estado</th>
                   <th>
                     <span className="sr-only">Acciones</span>
@@ -493,9 +542,17 @@ function BusinessesPanel({ onChanged }: { onChanged: () => void }) {
                         {b.ownerEmail ?? '—'}
                       </div>
                     </td>
-                    <td data-label="Tipo">{b.tipoNegocio ?? '—'}</td>
                     <td data-label="Miembros">{b.miembros}</td>
                     <td data-label="Registro">{dateShort(b.createdAt)}</td>
+                    <td data-label="Suscripción">
+                      {b.suscripcionEstado ? (
+                        <StateBadge estado={b.suscripcionEstado} />
+                      ) : (
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setAssigning(b)} aria-label={`Asignar plan a ${b.nombreComercial ?? b.razonSocial}`}>
+                          <CreditCard size={16} aria-hidden /> Asignar plan
+                        </button>
+                      )}
+                    </td>
                     <td data-label="Estado">
                       <Badge tone={b.estado === 'activo' ? 'green' : 'red'}>{b.estado === 'activo' ? 'Activo' : 'Suspendido'}</Badge>
                       {b.suspendidoMotivo && (
@@ -548,7 +605,103 @@ function BusinessesPanel({ onChanged }: { onChanged: () => void }) {
         onConfirm={reactivate}
         onClose={() => setReactivating(null)}
       />
+      {assigning && (
+        <AssignPlanModal
+          business={assigning}
+          onClose={() => setAssigning(null)}
+          onDone={() => {
+            setAssigning(null);
+            refresh();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+/** Businesses from before paid plans: put them on a plan with an explicit paid-through date. */
+function AssignPlanModal({ business, onClose, onDone }: { business: PlatformBusiness; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const plans = useAsync(() => api<{ items: Array<{ id: string; nombre: string; precioMensualCentavos: number }> }>('/v1/billing/plans'), []);
+  const [planId, setPlanId] = useState('');
+  const [fin, setFin] = useState(() => new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10));
+  const [motivo, setMotivo] = useState('Cliente existente antes de los planes de pago');
+  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const name = business.nombreComercial ?? business.razonSocial;
+
+  useEffect(() => {
+    if (!planId && plans.data?.items[0]) setPlanId(plans.data.items[0].id);
+  }, [plans.data, planId]);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const end = new Date(`${fin}T23:59:59-04:00`);
+    if (!(end.getTime() > Date.now())) return setError('La fecha debe ser futura.');
+    if (motivo.trim().length < 3) return setError('Escribe el motivo.');
+    if (!confirmed) return setError('Marca la casilla para confirmar.');
+    setBusy(true);
+    try {
+      await api('/v1/platform/subscriptions/assign', {
+        method: 'POST',
+        body: { confirmar: true, tenantId: business.id, planId, periodoFin: end.toISOString(), motivo: motivo.trim() },
+      });
+      toast.success('Plan asignado', name);
+      onDone();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Asignar plan"
+      subtitle={name}
+      size="sm"
+      footer={
+        <>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
+            Cancelar
+          </button>
+          <button type="submit" form="assign-form" className="btn btn-primary" disabled={busy || !confirmed || !planId}>
+            {busy && <Spinner size={16} />} Asignar
+          </button>
+        </>
+      }
+    >
+      <form id="assign-form" className="stack" onSubmit={submit} noValidate>
+        <p className="confirm-message">El negocio queda con la suscripción activa hasta la fecha que elijas (cortesía o migración). Después aplican renovación, gracia y solo lectura como a cualquier cliente.</p>
+        {error && (
+          <div className="form-alert" role="alert">
+            <span>{error}</span>
+          </div>
+        )}
+        {plans.error ? (
+          <ErrorState error={plans.error} onRetry={plans.reload} />
+        ) : !plans.data ? (
+          <Skeleton h={48} />
+        ) : (
+          <SelectInput label="Plan" value={planId} onChange={(e) => setPlanId(e.target.value)}>
+            {plans.data.items.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre} · {dop(p.precioMensualCentavos)}/mes
+              </option>
+            ))}
+          </SelectInput>
+        )}
+        <TextInput label="Pagado hasta" type="date" value={fin} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setFin(e.target.value)} required />
+        <TextArea label="Motivo" rows={2} maxLength={500} value={motivo} onChange={(e) => setMotivo(e.target.value)} required />
+        <label className="check">
+          <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> Confirmo la asignación
+        </label>
+      </form>
+    </Modal>
   );
 }
 
@@ -557,7 +710,7 @@ function ActivityPanel() {
   if (list.error) return <ErrorState error={list.error} onRetry={list.reload} />;
   if (!list.data) return <Skeleton h={200} />;
   if (list.data.items.length === 0) {
-    return <EmptyState icon={<History size={26} />} title="Sin actividad todavía" detail="Aquí verás cada bloqueo, habilitación y suspensión." />;
+    return <EmptyState icon={<History size={26} />} title="Sin actividad todavía" detail="Aquí verás cada autorización, pago, bloqueo y suspensión." />;
   }
   return (
     <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 12 }}>
@@ -565,7 +718,7 @@ function ActivityPanel() {
         <li key={e.id} className="card" style={{ padding: 12, boxShadow: 'none' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <span>
-              <strong>{ACTION_LABEL[e.action]}</strong> {e.targetLabel ?? ''}
+              <strong>{ACTION_LABEL[e.action] ?? e.action}</strong> {e.action === 'suscripcion.barrido' ? '' : (e.targetLabel ?? '')}
             </span>
             <span className="muted" style={{ fontSize: '0.85rem' }}>
               {dateTime(e.createdAt)}
@@ -573,6 +726,7 @@ function ActivityPanel() {
           </div>
           <div className="muted" style={{ fontSize: '0.85rem', marginTop: 4, overflowWrap: 'anywhere' }}>
             Por {e.actorEmail}
+            {typeof e.detail.montoCentavos === 'number' ? ` · ${dop(e.detail.montoCentavos)}` : ''}
             {e.detail.motivo ? ` · Motivo: ${e.detail.motivo}` : ''}
           </div>
         </li>
