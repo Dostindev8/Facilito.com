@@ -76,6 +76,39 @@ export async function sanitizeProductImage(
   }
 }
 
+const PDF_SIG = Buffer.from('%PDF-', 'latin1');
+// Active content has no place in a bank receipt; refusing it beats trying to neutralize it.
+const PDF_ACTIVE = /\/(JavaScript|JS|Launch|EmbeddedFile|OpenAction|AA|RichMedia|XFA)\b/;
+
+/**
+ * Payment receipts: a photo/screenshot (re-encoded to WebP, legible size kept) or a bank PDF without active content.
+ * The admin opens these, so nothing executable may survive.
+ */
+export async function sanitizeReceipt(
+  buf: Buffer,
+  maxBytes: number,
+): Promise<{ ok: true; bytes: Buffer; mime: 'image/webp' | 'application/pdf'; hash: string } | { ok: false; reason: string }> {
+  if (buf.length === 0 || buf.length > maxBytes) return { ok: false, reason: 'size' };
+  const scan = await scanMalware(buf);
+  if (!scan.clean) return { ok: false, reason: 'malware' };
+  if (buf.subarray(0, 5).equals(PDF_SIG)) {
+    if (PDF_ACTIVE.test(buf.toString('latin1'))) return { ok: false, reason: 'pdf_active_content' };
+    return { ok: true, bytes: buf, mime: 'application/pdf', hash: createHash('sha256').update(buf).digest('hex') };
+  }
+  if (detectImageKind(buf) === 'unknown' && !isWebp(buf)) return { ok: false, reason: 'unsupported_or_spoofed_type' };
+  try {
+    const { default: sharp } = await import('sharp');
+    const bytes = await sharp(buf, { limitInputPixels: 40_000_000, failOn: 'error' })
+      .rotate()
+      .resize({ width: 1800, height: 1800, fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 85 })
+      .toBuffer();
+    return { ok: true, bytes, mime: 'image/webp', hash: createHash('sha256').update(bytes).digest('hex') };
+  } catch {
+    return { ok: false, reason: 'corrupt' };
+  }
+}
+
 /** Malware scan port — stub always clean in local; ClamAV in Compose profile. */
 export async function scanMalware(_buf: Buffer): Promise<{ clean: boolean }> {
   return { clean: true };

@@ -12,6 +12,7 @@ import { invoiceRoutes } from './routes/invoice.routes.js';
 import { businessRoutes } from './routes/business.routes.js';
 import { legacyRoutes } from './routes/legacy.routes.js';
 import { platformRoutes } from './routes/platform.routes.js';
+import { billingRoutes } from './routes/billing.routes.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const env = getEnv();
@@ -45,7 +46,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT'],
-    allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-facilito-csrf'],
+    allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-facilito-csrf', 'x-solicitud-token'],
     maxAge: 600,
   });
 
@@ -76,6 +77,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(businessRoutes);
   await app.register(legacyRoutes);
   await app.register(platformRoutes);
+  await app.register(billingRoutes);
 
   return app;
 }

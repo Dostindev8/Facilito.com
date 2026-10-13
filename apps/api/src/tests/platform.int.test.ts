@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
+import { authenticator } from 'otplib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withPlatformAdmin } from '../db/client.js';
 import { provisionPlatformAdmin } from '../db/platform-admin.js';
-import { api, bootApp, refreshCookieFrom, register, shutdown, type Session } from './helpers.js';
+import { api, bootApp, platformAdminSession, refreshCookieFrom, register, shutdown, type Session } from './helpers.js';
 
 const ADMIN_EMAIL = 'Root.Admin@Facilito.test';
 const ADMIN_PASSWORD = 'PlataformaSegura2026';
@@ -10,19 +11,16 @@ const ROTATED_PASSWORD = `${ADMIN_PASSWORD}-rotada`;
 const CSRF = { 'x-facilito-csrf': '1' };
 
 let app: FastifyInstance;
-let admin: { token: string; personaId: string };
+let admin: { token: string; personaId: string; totpSecret: string };
 let owner: Session;
 
-async function login(email: string, password: string) {
-  return app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, password } });
+async function login(email: string, password: string, totp?: string) {
+  return app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, password, ...(totp ? { totp } : {}) } });
 }
 
 beforeAll(async () => {
   app = await bootApp();
-  await provisionPlatformAdmin({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, nombre: 'Root' });
-  const res = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
-  expect(res.statusCode).toBe(200);
-  admin = { token: res.json().accessToken, personaId: res.json().user.personaId };
+  admin = await platformAdminSession(app, ADMIN_EMAIL, ADMIN_PASSWORD);
   owner = await register(app, { nombre: 'María Colmado', razonSocial: 'Colmado María' });
 });
 afterAll(async () => {
@@ -30,21 +28,47 @@ afterAll(async () => {
 });
 
 describe('provisioning', () => {
-  it('logs in with just email and password, with platform flag and an internal workspace', async () => {
-    const res = await login(ADMIN_EMAIL.toLowerCase(), ADMIN_PASSWORD);
-    expect(res.json().user).toMatchObject({ platformAdmin: true, rol: 'owner', negocio: 'Facilito · Administración' });
+  it('logs in with the second factor, with platform flag and an internal workspace', async () => {
+    const res = await login(ADMIN_EMAIL.toLowerCase(), ADMIN_PASSWORD, authenticator.generate(admin.totpSecret));
+    expect(res.json().user).toMatchObject({ platformAdmin: true, mfa: true, rol: 'owner', negocio: 'Facilito · Administración' });
     const s = await api(app, admin).get('/v1/settings');
     expect(s.statusCode).toBe(200);
     expect(JSON.stringify(s.json())).toContain('"rnc":null');
   });
 
+  it('2FA is mandatory: an admin without it only gets a session that cannot open the panel', async () => {
+    const email = 'sin.mfa@facilito.test';
+    await provisionPlatformAdmin({ email, password: ADMIN_PASSWORD, nombre: 'Sin MFA' });
+    const res = await login(email, ADMIN_PASSWORD);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().user).toMatchObject({ platformAdmin: true, mfa: false });
+    const panel = await api(app, { token: res.json().accessToken }).get('/v1/platform/stats');
+    expect(panel.statusCode).toBe(403);
+    expect(panel.json().code).toBe('mfa_required');
+  });
+
+  it('enabling 2FA ends the old sessions so the next login carries the second factor', async () => {
+    const email = 'enrola.mfa@facilito.test';
+    await provisionPlatformAdmin({ email, password: ADMIN_PASSWORD, nombre: 'Enrola' });
+    const first = await login(email, ADMIN_PASSWORD);
+    const token = first.json().accessToken as string;
+    const secret = (await api(app, { token }).post('/v1/auth/totp/setup')).json().secret as string;
+    const verify = await api(app, { token }).post('/v1/auth/totp/verify', { code: authenticator.generate(secret) });
+    expect(verify.json()).toMatchObject({ enabled: true, reloginRequired: true });
+    expect((await api(app, { token }).get('/v1/me')).statusCode).toBe(401);
+    expect((await login(email, ADMIN_PASSWORD)).json().code).toBe('totp_required');
+    const again = await login(email, ADMIN_PASSWORD, authenticator.generate(secret));
+    expect((await api(app, { token: again.json().accessToken }).get('/v1/platform/stats')).statusCode).toBe(200);
+  });
+
   it('is idempotent: re-running keeps one account and rotates the password', async () => {
     const r = await provisionPlatformAdmin({ email: ADMIN_EMAIL, password: ROTATED_PASSWORD, nombre: 'Root' });
     expect(r.created).toBe(false);
-    expect((await login(ADMIN_EMAIL, ADMIN_PASSWORD)).statusCode).toBe(401);
-    expect((await login(ADMIN_EMAIL, ROTATED_PASSWORD)).statusCode).toBe(200);
+    const code = () => authenticator.generate(admin.totpSecret);
+    expect((await login(ADMIN_EMAIL, ADMIN_PASSWORD, code())).statusCode).toBe(401);
+    expect((await login(ADMIN_EMAIL, ROTATED_PASSWORD, code())).statusCode).toBe(200);
     await provisionPlatformAdmin({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, nombre: 'Root' });
-    admin.token = (await login(ADMIN_EMAIL, ADMIN_PASSWORD)).json().accessToken;
+    admin.token = (await login(ADMIN_EMAIL, ADMIN_PASSWORD, code())).json().accessToken;
   });
 
   it('regular sessions are not platform admins', async () => {

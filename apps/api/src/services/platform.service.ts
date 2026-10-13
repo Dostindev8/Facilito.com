@@ -5,12 +5,28 @@ import { forgetSessionsOf } from '../auth/session-status.js';
 import { AppError } from '../http/errors.js';
 import { likePattern, pagination, safeText, uuidParam } from '../http/validators.js';
 
-type PlatformAction = 'persona.block' | 'persona.unblock' | 'negocio.suspend' | 'negocio.reactivate';
+export type PlatformAction =
+  | 'persona.block'
+  | 'persona.unblock'
+  | 'negocio.suspend'
+  | 'negocio.reactivate'
+  | 'suscripcion.autorizar'
+  | 'suscripcion.rechazar'
+  | 'suscripcion.reenviar'
+  | 'suscripcion.pago'
+  | 'suscripcion.reembolso'
+  | 'suscripcion.plan'
+  | 'suscripcion.suspender'
+  | 'suscripcion.reactivar'
+  | 'suscripcion.cancelar'
+  | 'suscripcion.asignar'
+  | 'suscripcion.comprobante'
+  | 'suscripcion.barrido';
 
 const FORBIDDEN = () => new AppError(403, 'Sin permiso', 'Esta sección es solo para administradores de Facilito.', 'forbidden');
 
 /** The database is the authority: a stale token claim cannot outlive removal from identity.platform_admin. */
-async function asPlatformAdmin<T>(actorId: string, fn: (q: Queryable) => Promise<T>): Promise<T> {
+export async function asPlatformAdmin<T>(actorId: string, fn: (q: Queryable) => Promise<T>): Promise<T> {
   return withPlatformAdmin(actorId, async (q) => {
     const r = await q.query<{ ok: boolean }>('SELECT app.is_platform_admin() AS ok');
     if (!r.rows[0]?.ok) throw FORBIDDEN();
@@ -18,7 +34,8 @@ async function asPlatformAdmin<T>(actorId: string, fn: (q: Queryable) => Promise
   });
 }
 
-async function log(q: Queryable, actorId: string, action: PlatformAction, targetId: string, detail: Record<string, unknown>, ip: string) {
+/** Append-only (trigger + RLS). Needs the platform context: app.platform = '1' and app.persona_id = actor. */
+export async function log(q: Queryable, actorId: string, action: PlatformAction, targetId: string, detail: Record<string, unknown>, ip: string) {
   await q.query(
     `INSERT INTO audit.platform_log (id, actor_id, action, target_id, detail, ip) VALUES ($1,$2,$3,$4,$5::jsonb,$6)`,
     [newUuidsV7(), actorId, action, targetId, JSON.stringify(detail), ip],
@@ -39,7 +56,11 @@ export async function stats(actorId: string) {
          (SELECT count(DISTINCT persona_id) FROM identity.refresh_token WHERE created_at > now() - interval '7 days')::int AS activos_7d,
          (SELECT count(*) FROM app.negocio WHERE NOT es_plataforma)::int AS negocios,
          (SELECT count(*) FROM app.negocio WHERE NOT es_plataforma AND created_at > now() - interval '30 days')::int AS negocios_nuevos_30d,
-         (SELECT count(*) FROM app.negocio WHERE NOT es_plataforma AND estado = 'suspendido')::int AS negocios_suspendidos`,
+         (SELECT count(*) FROM app.negocio WHERE NOT es_plataforma AND estado = 'suspendido')::int AS negocios_suspendidos,
+         (SELECT count(*) FROM billing.suscripcion WHERE estado = 'PENDIENTE_AUTORIZACION')::int AS solicitudes_pendientes,
+         (SELECT count(*) FROM billing.comprobante c
+           WHERE NOT EXISTS (SELECT 1 FROM billing.comprobante_revision r WHERE r.comprobante_id = c.id)
+             AND EXISTS (SELECT 1 FROM billing.suscripcion s WHERE s.id = c.suscripcion_id AND s.tenant_id IS NOT NULL))::int AS comprobantes_pendientes`,
     );
     const s = r.rows[0]!;
     return {
@@ -50,6 +71,8 @@ export async function stats(actorId: string) {
       negocios: s.negocios,
       negociosNuevos30d: s.negocios_nuevos_30d,
       negociosSuspendidos: s.negocios_suspendidos,
+      solicitudesPendientes: s.solicitudes_pendientes,
+      comprobantesPendientes: s.comprobantes_pendientes,
     };
   });
 }
@@ -178,6 +201,8 @@ interface BusinessRow {
   owner_email: string | null;
   owner_nombre: string | null;
   miembros: number;
+  suscripcion_id: string | null;
+  suscripcion_estado: string | null;
   total: number;
 }
 
@@ -194,6 +219,8 @@ export async function listBusinesses(actorId: string, query: unknown) {
       `SELECT n.id, n.razon_social, n.nombre_comercial, n.tipo_negocio, n.plan, n.estado, n.suspendido_motivo, n.created_at,
               o.email AS owner_email, o.nombre AS owner_nombre,
               (SELECT count(*) FROM app.acceso a WHERE a.tenant_id = n.id AND a.estado = 'active')::int AS miembros,
+              (SELECT s.id FROM billing.suscripcion s WHERE s.tenant_id = n.id) AS suscripcion_id,
+              (SELECT s.estado FROM billing.suscripcion s WHERE s.tenant_id = n.id) AS suscripcion_estado,
               count(*) OVER ()::int AS total
          FROM app.negocio n
          LEFT JOIN LATERAL (
@@ -221,6 +248,8 @@ export async function listBusinesses(actorId: string, query: unknown) {
         ownerEmail: b.owner_email,
         ownerNombre: b.owner_nombre,
         miembros: b.miembros,
+        suscripcionId: b.suscripcion_id,
+        suscripcionEstado: b.suscripcion_estado,
       })),
       total: r.rows[0]?.total ?? 0,
       page,
@@ -274,11 +303,12 @@ export async function activity(actorId: string) {
       target_label: string | null;
     }>(
       `SELECT l.id, l.action, l.target_id, l.detail, l.created_at, a.email AS actor_email,
-              coalesce(tp.email, coalesce(tn.nombre_comercial, tn.razon_social)) AS target_label
+              coalesce(tp.email, tn.nombre_comercial, tn.razon_social, ts.razon_social) AS target_label
          FROM audit.platform_log l
          JOIN identity.persona a ON a.id = l.actor_id
          LEFT JOIN identity.persona tp ON tp.id = l.target_id
          LEFT JOIN app.negocio tn ON tn.id = l.target_id
+         LEFT JOIN billing.suscripcion ts ON ts.id = l.target_id
         ORDER BY l.created_at DESC
         LIMIT 100`,
     );

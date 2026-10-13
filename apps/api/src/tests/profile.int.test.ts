@@ -69,11 +69,8 @@ describe('registro: tipo de negocio libre + Instagram', () => {
   });
 
   it('rechaza HTML en el tipo y un Instagram inválido con errores por campo', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/auth/register',
-      payload: { nombre: 'Eva', email: `eva.${randomUUID()}@facilito.test`, password: PASSWORD, razonSocial: 'Neg', rnc: String(rncSeq++), tipoNegocio: '<script>x</script>', instagram: 'no válido' },
-    });
+    const s = await register(app);
+    const res = await api(app, s).patch('/v1/settings', { tipoNegocio: '<script>x</script>', instagram: 'no válido' });
     expect(res.statusCode).toBe(400);
     const fields = res.json().errors.map((e: { field: string }) => e.field);
     expect(fields).toEqual(expect.arrayContaining(['tipoNegocio', 'instagram']));

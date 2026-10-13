@@ -52,6 +52,7 @@ interface Message {
   paragraphs: string[];
   action?: { label: string; url: string };
   footnote: string;
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 }
 
 function render(m: Message): { html: string; text: string } {
@@ -91,6 +92,7 @@ async function deliver(m: Message): Promise<void> {
       subject: m.subject,
       text,
       html,
+      ...(m.attachments?.length ? { attachments: m.attachments } : {}),
     });
   } catch (err) {
     // Never log the message: it carries the token. The SMTP error code is enough to diagnose.
@@ -129,6 +131,83 @@ export async function sendEmailChangeEmail(newEmail: string, token: string): Pro
     paragraphs: ['Pediste usar esta dirección para entrar a Facilito. Confírmala para completar el cambio.', 'El enlace vence en 60 minutos. Al confirmarlo cerraremos tus sesiones abiertas.'],
     action: { label: 'Confirmar correo', url },
     footnote: 'Si no reconoces esta solicitud, ignora este correo y no se hará ningún cambio.',
+  });
+}
+
+export function invitationUrl(token: string): string {
+  return `${appUrl()}/activar?token=${encodeURIComponent(token)}`;
+}
+
+/** Returns whether an email actually left; the admin panel always gets the link to share it another way. */
+export async function sendInvitationEmail(email: string, nombre: string, negocio: string, token: string, horas: number): Promise<boolean> {
+  const url = invitationUrl(token);
+  if (!emailProviderConfigured()) {
+    if (getEnv().NODE_ENV === 'development') console.info(`[mailer:dev] Invitation for ${email}: ${url}`);
+    return false;
+  }
+  await deliver({
+    to: email,
+    subject: 'Tu cuenta de Facilito está lista',
+    heading: `¡Bienvenido a Facilito, ${nombre}!`,
+    paragraphs: [
+      `Confirmamos tu pago y aprobamos la cuenta de ${negocio}.`,
+      `Crea tu contraseña para entrar. El enlace vence en ${horas} horas y solo se puede usar una vez.`,
+    ],
+    action: { label: 'Crear mi contraseña', url },
+    footnote: 'Si no solicitaste una cuenta de Facilito, ignora este correo.',
+  });
+  return true;
+}
+
+export async function sendNewRequestNotice(to: string[], negocio: string, plan: string): Promise<void> {
+  if (!emailProviderConfigured() || !to.length) return;
+  await deliver({
+    to: to.join(','),
+    subject: `Nueva solicitud de suscripción: ${negocio}`,
+    heading: 'Hay una solicitud esperando autorización',
+    paragraphs: [`${negocio} pidió el plan ${plan} y subió su comprobante de pago.`, 'Verifica la transferencia en el banco antes de autorizar.'],
+    action: { label: 'Revisar solicitudes', url: `${appUrl()}/admin?tab=solicitudes` },
+    footnote: 'Recibes este aviso porque eres administrador de Facilito.',
+  });
+}
+
+export async function sendRequestRejectedEmail(email: string, negocio: string, motivo: string): Promise<void> {
+  if (!emailProviderConfigured()) return;
+  await deliver({
+    to: email,
+    subject: 'Sobre tu solicitud de Facilito',
+    heading: 'No pudimos aprobar tu solicitud',
+    paragraphs: [`Revisamos la solicitud de ${negocio} y no pudimos aprobarla.`, `Motivo: ${motivo}`, 'Si ya hiciste el pago, responde este correo y te ayudamos.'],
+    footnote: 'Facilito nunca te pedirá tu contraseña por correo.',
+  });
+}
+
+export async function sendPaymentReceivedEmail(email: string, negocio: string, monto: string, periodoFin: string): Promise<void> {
+  if (!emailProviderConfigured()) return;
+  await deliver({
+    to: email,
+    subject: 'Recibimos tu pago de Facilito',
+    heading: 'Pago confirmado',
+    paragraphs: [`Registramos tu pago de ${monto} para ${negocio}.`, `Tu suscripción está activa hasta el ${periodoFin}.`],
+    action: { label: 'Ver mi suscripción', url: `${appUrl()}/suscripcion` },
+    footnote: 'Puedes descargar el recibo desde la sección Suscripción.',
+  });
+}
+
+export async function sendInvoiceEmail(
+  to: string,
+  negocio: string,
+  numero: string,
+  total: string,
+  pdf: { filename: string; bytes: Buffer },
+): Promise<void> {
+  await deliver({
+    to,
+    subject: `Factura ${numero} de ${negocio}`,
+    heading: `Factura ${numero}`,
+    paragraphs: [`${negocio} te envía la factura ${numero} por ${total}.`, 'La encontrarás adjunta en PDF.'],
+    footnote: `Enviado por ${negocio} a través de Facilito. Si tienes preguntas, responde a este correo o contacta al negocio.`,
+    attachments: [{ filename: pdf.filename, content: pdf.bytes, contentType: 'application/pdf' }],
   });
 }
 

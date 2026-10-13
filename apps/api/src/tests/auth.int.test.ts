@@ -13,18 +13,29 @@ afterAll(async () => {
 
 const CSRF = { 'x-facilito-csrf': '1' };
 
-describe('registro', () => {
-  it('crea dueño + negocio y devuelve sesión con cookie httpOnly', async () => {
+describe('registro público retirado', () => {
+  it('POST /v1/auth/register ya no existe (las cuentas nacen de una suscripción autorizada)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/v1/auth/register',
-      payload: { nombre: 'Ana Pérez', email: 'Ana@Negocio.do', password: PASSWORD, razonSocial: 'Colmado Ana', rnc: '131-00000-1', vertical: 'colmado' },
+      payload: { nombre: 'Ana Pérez', email: 'ana@negocio.do', password: PASSWORD, razonSocial: 'Colmado Ana', rnc: '131000001', vertical: 'colmado' },
     });
-    expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('route_not_found');
+  });
+
+  it('el botón de Google sin configurar se retiró: la ruta no existe', async () => {
+    expect((await app.inject({ method: 'GET', url: '/v1/auth/google' })).statusCode).toBe(404);
+  });
+
+  it('login devuelve sesión con cookie httpOnly, sin refresh token en el cuerpo', async () => {
+    const s = await register(app, { nombre: 'Ana Pérez', razonSocial: 'Colmado Ana' });
+    const res = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email: s.email.toUpperCase(), password: PASSWORD } });
+    expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.accessToken).toBeTypeOf('string');
     expect(body.refreshToken).toBeUndefined();
-    expect(body.user).toMatchObject({ nombre: 'Ana Pérez', email: 'ana@negocio.do', rol: 'owner', negocio: 'Colmado Ana' });
+    expect(body.user).toMatchObject({ nombre: 'Ana Pérez', email: s.email, rol: 'owner', negocio: 'Colmado Ana', mfa: false, suscripcion: null });
     const cookies = [res.headers['set-cookie']].flat().map(String);
     const rt = cookies.find((c) => c.startsWith('fc_rt='))!;
     expect(rt).toMatch(/HttpOnly/i);
@@ -34,44 +45,6 @@ describe('registro', () => {
     expect(hint).toMatch(/^fc_s=1;/);
     expect(hint).not.toMatch(/HttpOnly/i);
     expect(hint).toMatch(/SameSite=Strict/i);
-  });
-
-  it('rechaza email duplicado (sin distinguir mayúsculas)', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/auth/register',
-      payload: { nombre: 'Otra', email: 'ana@negocio.do', password: PASSWORD, razonSocial: 'Otro', rnc: '131000009', vertical: 'colmado' },
-    });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().code).toBe('email_taken');
-  });
-
-  it('valida campos: contraseña débil, RNC inválido, campos extra', async () => {
-    const weak = await app.inject({
-      method: 'POST',
-      url: '/v1/auth/register',
-      payload: { nombre: 'X Y', email: 'x@y.do', password: 'corta', razonSocial: 'Neg', rnc: '123', vertical: 'colmado' },
-    });
-    expect(weak.statusCode).toBe(400);
-    const fields = (weak.json().errors as Array<{ field: string }>).map((e) => e.field);
-    expect(fields).toEqual(expect.arrayContaining(['password', 'rnc']));
-
-    const extra = await app.inject({
-      method: 'POST',
-      url: '/v1/auth/register',
-      payload: { nombre: 'X Y', email: 'x2@y.do', password: PASSWORD, razonSocial: 'Neg', rnc: '131000017', rol: 'owner', tenantId: 'x' },
-    });
-    expect(extra.statusCode).toBe(400);
-  });
-
-  it('rechaza RNC ya registrado', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/auth/register',
-      payload: { nombre: 'Dup', email: 'dup@x.do', password: PASSWORD, razonSocial: 'Dup', rnc: '131000001', vertical: 'colmado' },
-    });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().code).toBe('rnc_taken');
   });
 });
 
@@ -107,6 +80,52 @@ describe('login y bloqueo por fuerza bruta', () => {
     const locked = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email: s.email, password: PASSWORD } });
     expect(locked.statusCode).toBe(429);
     expect(locked.json().code).toBe('locked');
+    expect(locked.json().retryAfterSeconds).toBe(900);
+  });
+});
+
+describe('sesiones activas revocables', () => {
+  it('lista los dispositivos y marca la sesión actual', async () => {
+    const s = await register(app);
+    const res = await app.inject({ method: 'GET', url: '/v1/auth/sessions', headers: { authorization: `Bearer ${s.token}`, cookie: s.cookie } });
+    expect(res.statusCode).toBe(200);
+    const items = res.json().items as Array<{ id: string; actual: boolean }>;
+    expect(items).toHaveLength(1);
+    expect(items[0]!.actual).toBe(true);
+  });
+
+  it('cerrar las demás sesiones invalida su access token al instante y su refresh', async () => {
+    const s = await register(app);
+    const other = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email: s.email, password: PASSWORD } });
+    const otherToken = other.json().accessToken as string;
+    const otherCookie = refreshCookieFrom(other);
+    expect((await api(app, { token: otherToken }).get('/v1/me')).statusCode).toBe(200);
+
+    const out = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/sessions/revoke-others',
+      headers: { authorization: `Bearer ${s.token}`, cookie: s.cookie, ...CSRF },
+    });
+    expect(out.statusCode).toBe(200);
+    expect(out.json().cerradas).toBe(1);
+
+    expect((await api(app, { token: otherToken }).get('/v1/me')).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/v1/auth/refresh', headers: { cookie: otherCookie, ...CSRF } })).statusCode).toBe(401);
+    expect((await api(app, s).get('/v1/me')).statusCode).toBe(200);
+  });
+
+  it('revocar una sesión ajena o inexistente → 404', async () => {
+    const a = await register(app);
+    const b = await register(app);
+    const list = await app.inject({ method: 'GET', url: '/v1/auth/sessions', headers: { authorization: `Bearer ${b.token}`, cookie: b.cookie } });
+    const bFamily = (list.json().items as Array<{ id: string }>)[0]!.id;
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/auth/sessions/${bFamily}/revoke`,
+      headers: { authorization: `Bearer ${a.token}`, ...CSRF },
+    });
+    expect(res.statusCode).toBe(404);
+    expect((await api(app, b).get('/v1/me')).statusCode).toBe(200);
   });
 });
 
@@ -177,12 +196,6 @@ describe('perfil, recuperación y protecciones', () => {
     const res = await app.inject({ method: 'POST', url: '/v1/auth/reset-password', payload: { token: 'x'.repeat(43), password: PASSWORD } });
     expect(res.statusCode).toBe(400);
     expect(res.json().code).toBe('reset_invalid');
-  });
-
-  it('Google OAuth reporta bloqueo de configuración (501)', async () => {
-    const res = await app.inject({ method: 'GET', url: '/v1/auth/google' });
-    expect(res.statusCode).toBe(501);
-    expect(res.json().code).toBe('oauth_not_configured');
   });
 
   it('cabeceras de seguridad y CORS con allowlist', async () => {

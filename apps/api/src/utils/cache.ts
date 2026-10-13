@@ -129,6 +129,18 @@ export async function counterReset(key: string): Promise<void> {
   await rawDel(`g:${key}`);
 }
 
+/** Which store answers right now; the per-instance memory fallback does not share counters across serverless instances. */
+export async function cacheBackend(): Promise<'redis' | 'memoria'> {
+  const r = await getRedis();
+  if (!r) return 'memoria';
+  try {
+    await r.get('g:health:probe');
+    return 'redis';
+  } catch {
+    return 'memoria';
+  }
+}
+
 export function __resetMemoryCacheForTests(): void {
   memory.clear();
 }

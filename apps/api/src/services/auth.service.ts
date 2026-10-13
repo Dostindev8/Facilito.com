@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { newUuidsV7, resolveBusinessType, rncPlainSchema, type RoleCode } from '@facilito/domain';
-import { listVerticals } from '@facilito/verticals';
+import { effectiveSubscriptionState, newUuidsV7, type RoleCode, type SubscriptionState } from '@facilito/domain';
 import { withAuthBootstrap, withPersona, type Queryable } from '../db/client.js';
 import {
   hashPassword,
@@ -14,12 +13,11 @@ import {
   encryptTotpSecret,
   generateTotpSecret,
 } from '../auth/tokens.js';
-import { encryptField, hashRnc, randomToken, sha256 } from '../utils/crypto.js';
-import { appendAudit } from '../audit/append.js';
+import { randomToken, sha256 } from '../utils/crypto.js';
 import { AppError } from '../http/errors.js';
-import { businessTypeField, instagramField, safeText } from '../http/validators.js';
 import { getEnv } from '../config/env.js';
 import { counterGet, counterIncr, counterReset } from '../utils/cache.js';
+import { forgetSessionsOf } from '../auth/session-status.js';
 import { emailProviderConfigured, MailDeliveryError, sendPasswordResetEmail } from './mailer.js';
 
 const SHORT_SESSION_SECONDS = 12 * 60 * 60;
@@ -37,24 +35,6 @@ export const emailField = z
   .email('Email inválido')
   .max(320);
 
-export const registerSchema = z
-  .object({
-    nombre: safeText(2, 120),
-    email: emailField,
-    password: passwordSchema,
-    razonSocial: safeText(2, 200),
-    rnc: z
-      .string()
-      .transform((s) => s.replace(/[\s-]/g, ''))
-      .pipe(rncPlainSchema),
-    /** Legacy catalog id; clients now send `tipoNegocio` (free text). */
-    vertical: z.string().max(40).optional(),
-    tipoNegocio: businessTypeField.optional(),
-    instagram: instagramField,
-    recordarme: z.boolean().default(false),
-  })
-  .strict();
-
 export const loginSchema = z
   .object({
     email: emailField,
@@ -68,10 +48,24 @@ export const loginSchema = z
   })
   .strict();
 
+/** Where the session was opened from, for the "active sessions" list. Never used for authorization. */
+export interface DeviceHint {
+  userAgent?: string | null;
+  ip?: string | null;
+}
+
 export interface SessionResult {
   accessToken: string;
   refresh: { raw: string; maxAgeSeconds: number | null };
   user: SessionUser;
+}
+
+export interface SubscriptionSummary {
+  estado: SubscriptionState;
+  plan: string;
+  periodoFin: string | null;
+  cancelarAlFinal: boolean;
+  soloLectura: boolean;
 }
 
 export interface SessionUser {
@@ -84,6 +78,8 @@ export interface SessionUser {
   negocio: string;
   businesses: Array<{ tenantId: string; rol: RoleCode; razonSocial: string }>;
   platformAdmin: boolean;
+  mfa: boolean;
+  suscripcion: SubscriptionSummary | null;
 }
 
 interface AccesoRow {
@@ -114,8 +110,37 @@ async function isPlatformAdmin(q: Queryable, personaId: string): Promise<boolean
   return r.rows.length > 0;
 }
 
+/** Readable in the system context and by the business itself (RLS). Businesses from before paid plans have none. */
+export async function loadSubscriptionSummary(q: Queryable, tenantId: string): Promise<SubscriptionSummary | null> {
+  const r = await q.query<{ estado: SubscriptionState; plan: string; periodo_fin: Date | string | null; cancelar_al_final: boolean }>(
+    `SELECT s.estado, p.nombre AS plan, s.periodo_fin, s.cancelar_al_final
+       FROM billing.suscripcion s JOIN billing.plan p ON p.id = s.plan_id
+      WHERE s.tenant_id = $1`,
+    [tenantId],
+  );
+  const s = r.rows[0];
+  if (!s) return null;
+  const fin = s.periodo_fin ? new Date(s.periodo_fin) : null;
+  const estado = effectiveSubscriptionState(s.estado, fin, s.cancelar_al_final);
+  return {
+    estado,
+    plan: s.plan,
+    periodoFin: fin?.toISOString() ?? null,
+    cancelarAlFinal: s.cancelar_al_final,
+    soloLectura: estado === 'SUSPENDIDA' || estado === 'CANCELADA',
+  };
+}
+
 export const ACCOUNT_BLOCKED = () =>
   new AppError(403, 'Cuenta suspendida', 'Tu cuenta está suspendida. Escríbenos a soporte si crees que es un error.', 'account_blocked');
+
+interface IssueOptions {
+  familyId?: string;
+  mfa: boolean;
+  device?: DeviceHint;
+}
+
+const clip = (v: string | null | undefined, max: number) => (v ? v.slice(0, max) : null);
 
 async function issueSession(
   q: Queryable,
@@ -123,22 +148,26 @@ async function issueSession(
   accesos: AccesoRow[],
   chosen: AccesoRow,
   remember: boolean,
-  familyId?: string,
+  opts: IssueOptions,
 ): Promise<SessionResult> {
   const env = getEnv();
   const ttl = remember ? env.JWT_REFRESH_TTL_SECONDS : SHORT_SESSION_SECONDS;
   const refresh = newRefreshTokenValue();
+  const familyId = opts.familyId ?? refresh.familyId;
   await q.query(
-    `INSERT INTO identity.refresh_token (id, persona_id, family_id, token_hash, expires_at, tenant_id, remember)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    `INSERT INTO identity.refresh_token (id, persona_id, family_id, token_hash, expires_at, tenant_id, remember, mfa, user_agent, ip)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     [
       refresh.id,
       persona.id,
-      familyId ?? refresh.familyId,
+      familyId,
       refresh.hash,
       new Date(Date.now() + ttl * 1000).toISOString(),
       chosen.tenant_id,
       remember,
+      opts.mfa,
+      clip(opts.device?.userAgent, 300),
+      clip(opts.device?.ip, 64),
     ],
   );
   const platformAdmin = await isPlatformAdmin(q, persona.id);
@@ -148,6 +177,8 @@ async function issueSession(
     accesoId: chosen.id,
     rol: chosen.rol,
     platformAdmin,
+    mfa: opts.mfa,
+    sid: familyId,
   });
   return {
     accessToken,
@@ -166,96 +197,50 @@ async function issueSession(
         razonSocial: a.nombre_comercial ?? a.razon_social,
       })),
       platformAdmin,
+      mfa: opts.mfa,
+      suscripcion: await loadSubscriptionSummary(q, chosen.tenant_id),
     },
   };
 }
 
-export async function registerOwner(input: unknown): Promise<SessionResult> {
-  const data = registerSchema.parse(input);
-  if (data.vertical !== undefined && !listVerticals().some((v) => v.id === data.vertical)) {
-    throw new AppError(400, 'Rubro inválido', 'Selecciona un tipo de negocio válido.', 'validation');
-  }
-  const tipo = resolveBusinessType(data.tipoNegocio, data.vertical);
-  const personaId = newUuidsV7();
-  const tenantId = newUuidsV7();
-  const accesoId = newUuidsV7();
-  const passwordHash = await hashPassword(data.password);
-  const rncHash = hashRnc(data.rnc);
+/* ───────────── Login with progressive lockout ───────────── */
 
-  return withPersona(
-    personaId,
-    async (q) => {
-      const exists = await q.query('SELECT 1 FROM identity.persona WHERE lower(email) = $1', [data.email]);
-      if (exists.rows.length) {
-        throw new AppError(409, 'Email en uso', 'Ya existe una cuenta con ese email. Inicia sesión.', 'email_taken');
-      }
-      const rncTaken = await q.query('SELECT 1 FROM app.negocio WHERE rnc_hash = $1', [rncHash]);
-      if (rncTaken.rows.length) {
-        throw new AppError(409, 'RNC registrado', 'Ese RNC ya tiene un negocio en Facilito. Pide acceso al dueño.', 'rnc_taken');
-      }
-      await q.query(`INSERT INTO identity.persona (id, email, password_hash, nombre) VALUES ($1,$2,$3,$4)`, [
-        personaId,
-        data.email,
-        passwordHash,
-        data.nombre,
-      ]);
-      await q.query(
-        `INSERT INTO app.negocio (id, razon_social, nombre_comercial, rnc_enc, rnc_hash, verticales, created_by,
-                                  tipo_negocio, tipo_negocio_source, instagram_handle)
-         VALUES ($1,$2,$2,$3,$4,$5::jsonb,$6,$7,$8,$9)`,
-        [
-          tenantId,
-          data.razonSocial,
-          encryptField(data.rnc),
-          rncHash,
-          JSON.stringify([tipo.vertical]),
-          personaId,
-          tipo.tipoNegocio,
-          tipo.source,
-          data.instagram ?? null,
-        ],
-      );
-      await q.query(
-        `INSERT INTO app.acceso (id, tenant_id, persona_id, rol, estado, display_name)
-         VALUES ($1,$2,$3,'owner','active',$4)`,
-        [accesoId, tenantId, personaId, data.nombre],
-      );
-      await appendAudit(q, {
-        tenantId,
-        action: 'create',
-        entity: 'negocio',
-        entityId: tenantId,
-        before: null,
-        after: { razonSocial: data.razonSocial, vertical: tipo.vertical, tipoNegocio: tipo.tipoNegocio, instagram: data.instagram ?? null },
-        authorId: personaId,
-      });
-      const accesos = await loadAccesos(q, personaId);
-      return issueSession(q, { id: personaId, email: data.email, nombre: data.nombre }, accesos, accesos[0]!, data.recordarme);
-    },
-    { authBootstrap: true, tenantId },
-  );
+const MAX_LOCK_SECONDS = 24 * 60 * 60;
+
+function lockKeys(email: string, ip: string) {
+  const h = sha256(email);
+  return { emailKey: `login:e:${h}`, lockKey: `login:lock:${h}`, levelKey: `login:lvl:${h}`, ipKey: `login:ip:${ip}` };
 }
 
-function lockKeys(email: string, ip: string): { emailKey: string; ipKey: string } {
-  return { emailKey: `login:e:${sha256(email)}`, ipKey: `login:ip:${ip}` };
+/** Each lock within 24 h doubles the previous one: 15 min, 30 min, 1 h … capped at 24 h. */
+function lockSecondsFor(level: number): number {
+  const base = getEnv().LOGIN_LOCK_SECONDS;
+  return Math.min(base * 2 ** Math.max(level - 1, 0), MAX_LOCK_SECONDS);
 }
 
-export async function login(input: unknown, ip: string): Promise<SessionResult> {
+function lockedError(seconds: number): AppError {
+  const minutes = Math.ceil(seconds / 60);
+  const when = minutes >= 120 ? `${Math.ceil(minutes / 60)} horas` : `${minutes} minutos`;
+  return new AppError(429, 'Cuenta bloqueada temporalmente', `Demasiados intentos fallidos. Intenta de nuevo en ${when}.`, 'locked', {
+    retryAfterSeconds: seconds,
+  });
+}
+
+export async function login(input: unknown, ip: string, device: DeviceHint = {}): Promise<SessionResult> {
   const data = loginSchema.parse(input);
   const env = getEnv();
-  const { emailKey, ipKey } = lockKeys(data.email, ip);
-  const [emailFails, ipFails] = await Promise.all([counterGet(emailKey), counterGet(ipKey)]);
-  if (emailFails >= env.LOGIN_MAX_FAILURES || ipFails >= env.LOGIN_MAX_FAILURES * 4) {
-    throw new AppError(
-      429,
-      'Cuenta bloqueada temporalmente',
-      `Demasiados intentos fallidos. Intenta de nuevo en ${Math.ceil(env.LOGIN_LOCK_SECONDS / 60)} minutos.`,
-      'locked',
-      { retryAfterSeconds: env.LOGIN_LOCK_SECONDS },
-    );
-  }
+  const keys = lockKeys(data.email, ip);
+  const [locked, ipFails, level] = await Promise.all([counterGet(keys.lockKey), counterGet(keys.ipKey), counterGet(keys.levelKey)]);
+  if (locked > 0) throw lockedError(lockSecondsFor(level));
+  if (ipFails >= env.LOGIN_MAX_FAILURES * 4) throw lockedError(env.LOGIN_LOCK_SECONDS);
+
   const fail = async (): Promise<never> => {
-    await Promise.all([counterIncr(emailKey, env.LOGIN_LOCK_SECONDS), counterIncr(ipKey, env.LOGIN_LOCK_SECONDS)]);
+    const [fails] = await Promise.all([counterIncr(keys.emailKey, env.LOGIN_LOCK_SECONDS), counterIncr(keys.ipKey, env.LOGIN_LOCK_SECONDS)]);
+    if (fails >= env.LOGIN_MAX_FAILURES) {
+      const lvl = await counterIncr(keys.levelKey, MAX_LOCK_SECONDS);
+      await counterIncr(keys.lockKey, lockSecondsFor(lvl));
+      await counterReset(keys.emailKey);
+    }
     throw new AppError(401, 'Credenciales inválidas', 'Email o contraseña incorrectos.', 'auth');
   };
 
@@ -280,15 +265,17 @@ export async function login(input: unknown, ip: string): Promise<SessionResult> 
     return fail();
   }
   if (!(await verifyPassword(persona.password_hash, data.password))) return fail();
+  let mfa = false;
   if (persona.totp_enabled) {
     if (!data.totp || !persona.totp_secret_enc) {
       throw new AppError(401, '2FA requerido', 'Ingresa el código de tu app de autenticación.', 'totp_required');
     }
     if (!verifyTotp(decryptTotpSecret(persona.totp_secret_enc), data.totp)) return fail();
+    mfa = true;
   }
   // Only revealed after the password proved ownership, so it cannot be used to probe accounts.
   if (persona.bloqueado_at) throw ACCOUNT_BLOCKED();
-  await counterReset(emailKey);
+  await counterReset(keys.emailKey);
 
   return withPersona(
     persona.id,
@@ -297,7 +284,7 @@ export async function login(input: unknown, ip: string): Promise<SessionResult> 
       if (!accesos.length) throw new AppError(403, 'Sin negocios', 'No tienes acceso activo a ningún negocio.', 'no_tenant');
       const chosen = data.tenantId ? accesos.find((a) => a.tenant_id === data.tenantId) : accesos[0];
       if (!chosen) throw new AppError(403, 'Sin acceso', 'No tienes acceso a ese negocio.', 'forbidden');
-      return issueSession(q, persona, accesos, chosen, data.recordarme);
+      return issueSession(q, persona, accesos, chosen, data.recordarme, { mfa, device: { ...device, ip } });
     },
     { authBootstrap: true },
   );
@@ -318,8 +305,11 @@ export async function refreshSession(rawRefresh: string | undefined): Promise<Se
       revoked_at: Date | string | null;
       tenant_id: string | null;
       remember: boolean;
+      mfa: boolean;
+      user_agent: string | null;
+      ip: string | null;
     }>(
-      `SELECT id, persona_id, family_id, expires_at, revoked_at, tenant_id, remember
+      `SELECT id, persona_id, family_id, expires_at, revoked_at, tenant_id, remember, mfa, user_agent, ip
          FROM identity.refresh_token WHERE token_hash = $1 FOR UPDATE`,
       [hash],
     );
@@ -343,7 +333,14 @@ export async function refreshSession(rawRefresh: string | undefined): Promise<Se
     const accesos = await loadAccesos(q, tok.persona_id);
     const chosen = accesos.find((a) => a.tenant_id === tok.tenant_id) ?? accesos[0];
     if (!chosen || !p.rows[0]) return { kind: 'no_tenant' as const };
-    return { kind: 'ok' as const, session: await issueSession(q, p.rows[0], accesos, chosen, tok.remember, tok.family_id) };
+    return {
+      kind: 'ok' as const,
+      session: await issueSession(q, p.rows[0], accesos, chosen, tok.remember, {
+        familyId: tok.family_id,
+        mfa: tok.mfa,
+        device: { userAgent: tok.user_agent, ip: tok.ip },
+      }),
+    };
   });
   switch (outcome.kind) {
     case 'ok':
@@ -389,25 +386,29 @@ export async function switchTenant(personaId: string, tenantId: string, rawRefre
       );
       let remember = false;
       let familyId: string | undefined;
+      let mfa = false;
+      let device: DeviceHint = {};
       if (rawRefresh) {
-        const cur = await q.query<{ id: string; family_id: string; remember: boolean }>(
-          `SELECT id, family_id, remember FROM identity.refresh_token
+        const cur = await q.query<{ id: string; family_id: string; remember: boolean; mfa: boolean; user_agent: string | null; ip: string | null }>(
+          `SELECT id, family_id, remember, mfa, user_agent, ip FROM identity.refresh_token
             WHERE token_hash = $1 AND persona_id = $2 AND revoked_at IS NULL`,
           [hashRefresh(rawRefresh), personaId],
         );
         if (cur.rows[0]) {
           remember = cur.rows[0].remember;
           familyId = cur.rows[0].family_id;
+          mfa = cur.rows[0].mfa;
+          device = { userAgent: cur.rows[0].user_agent, ip: cur.rows[0].ip };
           await q.query(`UPDATE identity.refresh_token SET revoked_at = now() WHERE id = $1`, [cur.rows[0].id]);
         }
       }
-      return issueSession(q, p.rows[0]!, accesos, chosen, remember, familyId);
+      return issueSession(q, p.rows[0]!, accesos, chosen, remember, { familyId, mfa, device });
     },
     { tenantId },
   );
 }
 
-export async function me(personaId: string, tenantId: string) {
+export async function me(personaId: string, tenantId: string, mfa = false) {
   return withPersona(
     personaId,
     async (q) => {
@@ -436,10 +437,142 @@ export async function me(personaId: string, tenantId: string) {
         negocio: current.nombre_comercial ?? current.razon_social,
         businesses: accesos.map((a) => ({ tenantId: a.tenant_id, rol: a.rol, razonSocial: a.nombre_comercial ?? a.razon_social })),
         platformAdmin: await isPlatformAdmin(q, personaId),
+        mfa,
+        suscripcion: await loadSubscriptionSummary(q, tenantId),
       };
     },
     { tenantId },
   );
+}
+
+/* ───────────── Active sessions ───────────── */
+
+export async function listSessions(personaId: string, rawRefresh: string | undefined) {
+  const currentHash = rawRefresh && rawRefresh.length <= 200 ? hashRefresh(rawRefresh) : '';
+  return withPersona(personaId, async (q) => {
+    const r = await q.query<{
+      family_id: string;
+      started_at: Date | string;
+      last_seen: Date | string;
+      expires_at: Date | string;
+      user_agent: string | null;
+      ip: string | null;
+      current: boolean;
+    }>(
+      `SELECT family_id, min(created_at) AS started_at, max(created_at) AS last_seen, max(expires_at) AS expires_at,
+              (array_agg(user_agent ORDER BY created_at DESC))[1] AS user_agent,
+              (array_agg(ip ORDER BY created_at DESC))[1] AS ip,
+              bool_or(token_hash = $2 AND revoked_at IS NULL) AS current
+         FROM identity.refresh_token
+        WHERE persona_id = $1
+        GROUP BY family_id
+       HAVING bool_or(revoked_at IS NULL AND expires_at > now())
+        ORDER BY max(created_at) DESC
+        LIMIT 50`,
+      [personaId, currentHash],
+    );
+    return {
+      items: r.rows.map((s) => ({
+        id: s.family_id,
+        inicio: new Date(s.started_at).toISOString(),
+        ultimaActividad: new Date(s.last_seen).toISOString(),
+        vence: new Date(s.expires_at).toISOString(),
+        dispositivo: s.user_agent,
+        ip: s.ip,
+        actual: s.current,
+      })),
+    };
+  });
+}
+
+export async function revokeSession(personaId: string, params: unknown): Promise<void> {
+  const { id } = z.object({ id: z.string().uuid('Identificador inválido') }).parse(params);
+  const n = await withPersona(personaId, async (q) => {
+    const r = await q.query(
+      `UPDATE identity.refresh_token SET revoked_at = now() WHERE persona_id = $1 AND family_id = $2 AND revoked_at IS NULL`,
+      [personaId, id],
+    );
+    return r.rowCount;
+  });
+  if (!n) throw new AppError(404, 'No encontrada', 'La sesión no existe o ya estaba cerrada.', 'not_found');
+  forgetSessionsOf({ personaId });
+}
+
+/** Signs out every other device; the current family keeps working. */
+export async function revokeOtherSessions(personaId: string, rawRefresh: string | undefined): Promise<{ cerradas: number }> {
+  const currentHash = rawRefresh && rawRefresh.length <= 200 ? hashRefresh(rawRefresh) : '';
+  const cerradas = await withPersona(personaId, async (q) => {
+    const r = await q.query(
+      `UPDATE identity.refresh_token SET revoked_at = now()
+        WHERE persona_id = $1 AND revoked_at IS NULL
+          AND family_id IS DISTINCT FROM (SELECT family_id FROM identity.refresh_token WHERE token_hash = $2 AND persona_id = $1)`,
+      [personaId, currentHash],
+    );
+    return r.rowCount;
+  });
+  forgetSessionsOf({ personaId });
+  return { cerradas };
+}
+
+/* ───────────── Invitation acceptance (the only way an account gets a password) ───────────── */
+
+const invitationToken = z.object({ token: z.string().min(20).max(200) }).strict();
+
+const INVITATION_INVALID = () =>
+  new AppError(400, 'Invitación inválida', 'El enlace expiró, ya se usó o fue reemplazado. Pide al equipo de Facilito que te reenvíe la invitación.', 'invitation_invalid');
+
+export async function inspectInvitation(input: unknown) {
+  const { token } = invitationToken.parse(input);
+  const row = await withAuthBootstrap(async (q) => {
+    const r = await q.query<{ email: string; nombre: string | null; negocio: string; plan: string; expires_at: Date | string }>(
+      `SELECT p.email, p.nombre, s.razon_social AS negocio, pl.nombre AS plan, i.expires_at
+         FROM billing.invitacion i
+         JOIN identity.persona p ON p.id = i.persona_id
+         JOIN billing.suscripcion s ON s.id = i.suscripcion_id
+         JOIN billing.plan pl ON pl.id = s.plan_id
+        WHERE i.token_hash = $1 AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > now()`,
+      [sha256(token)],
+    );
+    return r.rows[0] ?? null;
+  });
+  if (!row) throw INVITATION_INVALID();
+  return { email: row.email, nombre: row.nombre, negocio: row.negocio, plan: row.plan, vence: new Date(row.expires_at).toISOString() };
+}
+
+export async function acceptInvitation(input: unknown, device: DeviceHint = {}): Promise<SessionResult> {
+  const d = z
+    .object({ token: z.string().min(20).max(200), password: passwordSchema, recordarme: z.boolean().default(false) })
+    .strict()
+    .parse(input);
+  const passwordHash = await hashPassword(d.password);
+  const result = await withAuthBootstrap(async (q) => {
+    const used = await q.query<{ persona_id: string; suscripcion_id: string }>(
+      `UPDATE billing.invitacion SET used_at = now()
+        WHERE token_hash = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()
+        RETURNING persona_id, suscripcion_id`,
+      [sha256(d.token)],
+    );
+    const inv = used.rows[0];
+    if (!inv) return null;
+    await q.query(`UPDATE identity.persona SET password_hash = $2, updated_at = now() WHERE id = $1`, [inv.persona_id, passwordHash]);
+    await q.query(
+      `INSERT INTO billing.evento (id, suscripcion_id, evento, de, a, actor_id, detalle)
+       SELECT $1, s.id, 'invitacion_aceptada', s.estado, s.estado, $2, '{}'::jsonb FROM billing.suscripcion s WHERE s.id = $3`,
+      [newUuidsV7(), inv.persona_id, inv.suscripcion_id],
+    );
+    const p = await q.query<{ id: string; email: string; nombre: string | null; bloqueado_at: Date | string | null }>(
+      `SELECT id, email, nombre, bloqueado_at FROM identity.persona WHERE id = $1`,
+      [inv.persona_id],
+    );
+    const persona = p.rows[0]!;
+    if (persona.bloqueado_at) throw ACCOUNT_BLOCKED();
+    await q.query(`SELECT set_config('app.persona_id', $1, true)`, [persona.id]);
+    const accesos = await loadAccesos(q, persona.id);
+    if (!accesos.length) throw new AppError(403, 'Sin negocios', 'Tu negocio no está activo. Escríbenos a soporte.', 'no_tenant');
+    return issueSession(q, persona, accesos, accesos[0]!, d.recordarme, { mfa: false, device });
+  });
+  if (!result) throw INVITATION_INVALID();
+  return result;
 }
 
 /* ───────────── Password reset ───────────── */
@@ -522,6 +655,7 @@ export async function setupTotp(personaId: string) {
   return { secret, otpauth: `otpauth://totp/Facilito?secret=${secret}&issuer=Facilito` };
 }
 
+/** Enabling 2FA ends every session: the next login proves the second factor and gets an MFA session. */
 export async function verifyTotpSetup(personaId: string, input: unknown) {
   const { code } = z.object({ code: z.string().regex(/^\d{6}$/, 'Código de 6 dígitos') }).strict().parse(input);
   await withPersona(personaId, async (q) => {
@@ -531,6 +665,8 @@ export async function verifyTotpSetup(personaId: string, input: unknown) {
       throw new AppError(400, 'Código inválido', 'El código no coincide. Revisa la hora de tu teléfono.', 'totp');
     }
     await q.query(`UPDATE identity.persona SET totp_enabled = true, updated_at = now() WHERE id = $1`, [personaId]);
+    await q.query(`UPDATE identity.refresh_token SET revoked_at = coalesce(revoked_at, now()) WHERE persona_id = $1`, [personaId]);
   });
-  return { enabled: true };
+  forgetSessionsOf({ personaId });
+  return { enabled: true, reloginRequired: true };
 }
