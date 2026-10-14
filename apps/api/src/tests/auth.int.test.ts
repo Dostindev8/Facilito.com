@@ -208,6 +208,14 @@ describe('perfil, recuperación y protecciones', () => {
     expect(evil.headers['access-control-allow-origin']).toBeUndefined();
   });
 
+  it('readiness comprueba la base de datos sin exponer configuración', async () => {
+    const r = await app.inject({ method: 'GET', url: '/health/ready' });
+    expect(r.statusCode).toBe(200);
+    expect(r.headers['cache-control']).toBe('no-store');
+    expect(r.json()).toMatchObject({ status: 'ok', db: 'ok', cache: expect.stringMatching(/^(redis|memoria)$/) });
+    expect(Object.keys(r.json()).sort()).toEqual(['cache', 'db', 'latencyMs', 'status']);
+  });
+
   it('errores con formato RFC 9457 y sin filtrar SQL', async () => {
     const res = await app.inject({ method: 'GET', url: '/v1/no-existe' });
     expect(res.statusCode).toBe(404);
