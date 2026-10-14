@@ -1818,6 +1818,14 @@ textarea.input {
   gap: 14px;
 }
 
+.app-unreachable {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  background: linear-gradient(180deg, #e3f1fb 0%, #f4f9fd 55%, #fff 100%);
+}
+
 /* Brand loader: the logo itself is the progress indicator (splash + route transitions). */
 .app-loading {
   display: grid;

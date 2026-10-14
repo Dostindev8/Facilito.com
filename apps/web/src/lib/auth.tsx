@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  ApiError,
   authRequest,
   logoutRequest,
   onSessionChange,
@@ -11,10 +12,14 @@ import {
   type SessionUser,
 } from './api';
 
-type Status = 'loading' | 'authenticated' | 'anonymous';
+/** `unreachable`: the session could not be checked (offline, timeout, 5xx) — not the same as signed out. */
+type Status = 'loading' | 'authenticated' | 'anonymous' | 'unreachable';
 
 interface AuthContextValue {
   status: Status;
+  /** Error from the last failed session check, for the retry screen. */
+  sessionError: unknown;
+  retrySession: () => void;
   user: SessionUser | null;
   login: (input: { email: string; password: string; recordarme: boolean; totp?: string }) => Promise<SessionUser>;
   /** Accounts are created by an admin after payment; the owner sets the password through a single-use invitation. */
@@ -29,17 +34,36 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [status, setStatus] = useState<Status>('loading');
+  const [sessionError, setSessionError] = useState<unknown>(null);
+
+  const checkSession = useCallback(() => {
+    refreshSession().catch((e: unknown) => {
+      if (e instanceof ApiError && (e.isNetwork || e.status >= 500)) {
+        setSessionError(e);
+        setStatus('unreachable');
+      } else {
+        setStatus('anonymous');
+      }
+    });
+  }, []);
+
+  const retrySession = useCallback(() => {
+    setSessionError(null);
+    setStatus('loading');
+    checkSession();
+  }, [checkSession]);
 
   useEffect(() => {
     const off = onSessionChange((u) => {
       setUser(u);
+      setSessionError(null);
       setStatus(u ? 'authenticated' : 'anonymous');
     });
-    refreshSession().catch(() => setStatus('anonymous'));
+    checkSession();
     return () => {
       off();
     };
-  }, []);
+  }, [checkSession]);
 
   const login = useCallback<AuthContextValue['login']>((input) => authRequest('login', input), []);
   const acceptInvitation = useCallback<AuthContextValue['acceptInvitation']>((input) => authRequest('invitations/accept', input), []);
@@ -50,8 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const can = useCallback((roles: readonly Role[]) => !!user && roles.includes(user.rol), [user]);
 
   const value = useMemo(
-    () => ({ status, user, login, acceptInvitation, logout, switchTenant, can }),
-    [status, user, login, acceptInvitation, logout, switchTenant, can],
+    () => ({ status, sessionError, retrySession, user, login, acceptInvitation, logout, switchTenant, can }),
+    [status, sessionError, retrySession, user, login, acceptInvitation, logout, switchTenant, can],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -6,6 +6,7 @@ import { Menu, WifiOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useOnline } from '@/lib/hooks';
 import { AppLoadingLogo } from '@/components/brand/app-loading-logo';
+import { ErrorState } from '@/components/ui/primitives';
 import { Sidebar } from './sidebar';
 import { SearchBox } from './search-box';
 import { NotificationsMenu } from './notifications';
@@ -15,7 +16,7 @@ import { SubscriptionBanner } from './subscription-banner';
 export const APP_VERSION = '1.0.0';
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { status, user } = useAuth();
+  const { status, user, sessionError, retrySession } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const online = useOnline();
@@ -39,6 +40,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       document.querySelector<HTMLElement>('.menu-btn')?.focus();
     };
   }, [drawer]);
+
+  if (status === 'unreachable') {
+    return (
+      <main className="app-unreachable">
+        <ErrorState error={sessionError} onRetry={retrySession} />
+      </main>
+    );
+  }
 
   if (status !== 'authenticated' || !user) {
     return <AppLoadingLogo screen label="Cargando tu negocio…" />;
