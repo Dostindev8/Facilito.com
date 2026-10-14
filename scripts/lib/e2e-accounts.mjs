@@ -4,7 +4,6 @@
 import { createHmac } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -58,7 +57,9 @@ async function post(base, path, { body, token, headers = {} } = {}) {
 }
 
 // Local only (.data is git-ignored): lets standalone scripts run again without restarting the API.
-const SECRET_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.data/e2e-admin-totp');
+// Relative to the cwd (the repo root for `pnpm e2e` / `pnpm e2e:smoke`): Playwright loads this file as CommonJS,
+// where import.meta does not exist.
+const SECRET_FILE = path.resolve(process.env.E2E_ADMIN_TOTP_FILE ?? '.data/e2e-admin-totp');
 
 /**
  * Base32 TOTP secret of the E2E admin. The local API provisions that admin without 2FA on every boot

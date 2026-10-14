@@ -156,6 +156,21 @@ test.describe('autenticación', () => {
     await expect(page).toHaveURL(/\/login\?next=%2Finventario/);
   });
 
+  test('si el servidor no responde al validar la sesión, ofrece reintentar en vez de cerrarla', async ({ page }) => {
+    await ownerSession(page, 'caido');
+    await page.route('**/api/v1/auth/refresh', (r) =>
+      r.fulfill({ status: 503, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Servicio no disponible', detail: 'Intenta de nuevo.' }) }),
+    );
+    await page.goto('/inicio');
+    const retry = page.getByRole('button', { name: 'Reintentar' });
+    await expect(retry).toBeVisible();
+    await expect(page).toHaveURL(/\/inicio$/);
+    await page.unroute('**/api/v1/auth/refresh');
+    await retry.click();
+    await expect(page.locator('#main')).toBeVisible();
+    await expect(page).toHaveURL(/\/inicio$/);
+  });
+
   test('el parámetro next no permite redirección abierta', async ({ page, baseURL }) => {
     const { email } = await ownerSession(page, 'next');
     await page.context().clearCookies();
