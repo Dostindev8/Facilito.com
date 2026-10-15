@@ -206,6 +206,13 @@ describe('perfil, recuperación y protecciones', () => {
     expect(ok.headers['access-control-allow-origin']).toBe('http://localhost:3000');
     const evil = await app.inject({ method: 'GET', url: '/health', headers: { origin: 'https://evil.example' } });
     expect(evil.headers['access-control-allow-origin']).toBeUndefined();
+    const preflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/v1/auth/email-change',
+      headers: { origin: 'http://localhost:3000', 'access-control-request-method': 'DELETE' },
+    });
+    expect(preflight.statusCode).toBe(204);
+    expect(String(preflight.headers['access-control-allow-methods'])).toContain('DELETE');
   });
 
   it('readiness comprueba la base de datos sin exponer configuración', async () => {

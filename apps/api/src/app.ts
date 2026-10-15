@@ -47,7 +47,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       else cb(null, false);
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'PUT'],
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
     allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-facilito-csrf', 'x-solicitud-token'],
     maxAge: 600,
   });
