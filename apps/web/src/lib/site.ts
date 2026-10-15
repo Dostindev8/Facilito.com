@@ -9,8 +9,11 @@ function trimSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
+/** VERCEL_PROJECT_PRODUCTION_URL is a bare host set by Vercel, so a missing variable never ships localhost canonicals. */
 export function siteUrl(): URL {
-  const raw = process.env.NEXT_PUBLIC_SITE_URL || process.env.WEB_PUBLIC_URL || LOCAL_URL;
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  const raw =
+    process.env.NEXT_PUBLIC_SITE_URL || process.env.WEB_PUBLIC_URL || (vercelHost ? `https://${vercelHost}` : '') || LOCAL_URL;
   try {
     return new URL(trimSlash(raw));
   } catch {
