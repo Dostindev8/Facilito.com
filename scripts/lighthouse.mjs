@@ -10,6 +10,7 @@ const OUT = path.resolve('test-results', 'lighthouse');
 mkdirSync(OUT, { recursive: true });
 // Password recovery is noindex on purpose, so its SEO score is reported but not gated.
 const pages = [
+  { p: '/', indexable: true },
   { p: '/login', indexable: true },
   { p: '/suscribirme', indexable: true },
   { p: '/precios', indexable: true },
