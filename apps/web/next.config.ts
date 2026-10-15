@@ -16,6 +16,8 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@facilito/ui'],
   poweredByHeader: false,
   reactStrictMode: true,
+  // Every page is dynamic (CSP nonce), so metadata would stream into <body>; it is static, so blocking costs nothing.
+  htmlLimitedBots: /.*/,
   experimental: {
     inlineCss: true,
   },
