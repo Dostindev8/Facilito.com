@@ -118,7 +118,14 @@ export function SubscribeFlow() {
     window.history.replaceState(null, '', '/suscribirme');
   };
 
-  if (saved === undefined) return <Skeleton h={320} />;
+  if (saved === undefined) {
+    return (
+      <>
+        <Stepper current={0} />
+        <PlansSkeleton />
+      </>
+    );
+  }
 
   if (checkout) {
     return <PaymentStep checkout={checkout} onUploaded={() => setCheckout(null)} />;
@@ -188,18 +195,21 @@ function LoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) 
   );
 }
 
+/** Sized like a rendered plan card so the footer does not jump when plans arrive (CLS). */
+function PlansSkeleton() {
+  return (
+    <div className="mkt-prices checkout-plans" aria-busy="true">
+      <Skeleton h={350} r={20} />
+      <Skeleton h={350} r={20} />
+      <Skeleton h={350} r={20} />
+    </div>
+  );
+}
+
 function PlanStep({ selected, onSelect }: { selected: string | null; onSelect: (id: string) => void }) {
   const plans = usePlans();
   if (plans.error) return <LoadError error={plans.error} onRetry={plans.reload} />;
-  if (!plans.data) {
-    return (
-      <div className="mkt-prices checkout-plans" aria-busy="true">
-        <Skeleton h={260} r={20} />
-        <Skeleton h={260} r={20} />
-        <Skeleton h={260} r={20} />
-      </div>
-    );
-  }
+  if (!plans.data) return <PlansSkeleton />;
   return (
     <div className="mkt-prices checkout-plans">
       {plans.data.items.map((p, i) => (
