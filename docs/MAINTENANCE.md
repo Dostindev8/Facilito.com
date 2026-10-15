@@ -38,6 +38,17 @@ No cambies `src/lib/auth.tsx`, cookies, callbacks ni validaciones del login para
 
 E2E, `scripts/e2e-api-smoke.mjs` y `scripts/lighthouse-authed.mjs` crean dueños por ese mismo flujo (`scripts/lib/e2e-accounts.mjs`). Playwright arranca la API con datos bancarios de prueba y un administrador E2E sin 2FA (`E2E_PLATFORM_ADMIN_*`, rechazado en producción); el setup global le enrola un TOTP nuevo en cada corrida. Si reutilizas una API ya levantada, arráncala con esas mismas variables. Los scripts se niegan a correr contra un host que no sea local porque cada autorización registra un cobro en el ledger.
 
+## Respaldos (D-01)
+
+Objetivo propuesto, a confirmar por el dueño: **RPO 24 h** (como mucho se pierde un día) y **RTO 4 h** (en cuatro horas el servicio vuelve con datos). Hoy no hay ensayo de restauración registrado: el objetivo no está demostrado.
+
+1. **PITR de Neon (primera línea).** Neon guarda el historial de la rama según el plan (ventana de restauración: TODO: VERIFICAR EN VIVO en la consola de Neon del proyecto). Para recuperar sin tocar producción: crea una rama Neon desde un instante anterior, apunta un preview a esa rama, verifica y solo entonces decide.
+2. **Copia propia cifrada (segunda línea, fuera de Neon).** Diaria, con un `pg_dump` de la misma versión mayor que Postgres:
+   `pg_dump --format=custom --no-owner --file=facilito-AAAAMMDD.dump "$DATABASE_ADMIN_URL"`, cifrada antes de salir de la máquina (`age -r <clave-pública>` o `gpg --symmetric`) y guardada en un bucket con versionado y retención mínima de 30 días. La clave de cifrado no se guarda junto a los respaldos. Nunca subas un dump sin cifrar: contiene RNC, cédulas y datos fiscales.
+3. **Ensayo de restauración (mensual).** Restaura el último dump en una rama Neon vacía con `pg_restore --no-owner --dbname "$URL_RAMA_PRUEBA" facilito-AAAAMMDD.dump`, corre `pnpm --filter @facilito/api migrate` contra ella (debe decir que no hay migraciones pendientes) y compara conteos de `app.factura`, `app.producto`, `billing.pago` y `audit.bitacora` con producción. Anota fecha, duración real y resultado; esa duración es el RTO medido.
+
+Los datos fiscales y el ledger son de solo inserción: un respaldo nunca se usa para «limpiar» comprobantes. Restaurar sobre producción requiere confirmación expresa del dueño.
+
 ### Recuperar el 2FA de un administrador
 
 Si un administrador pierde el teléfono: `PLATFORM_ADMIN_EMAIL=… PLATFORM_ADMIN_PASSWORD=<nueva> PLATFORM_ADMIN_RESET_TOTP=1 pnpm --filter @facilito/api platform:admin` con `DATABASE_ADMIN_URL`. Quita el segundo factor, cambia la contraseña y cierra todas sus sesiones; al entrar, el panel le pide enrolar un autenticador nuevo. No existe vía HTTP para esto a propósito.
