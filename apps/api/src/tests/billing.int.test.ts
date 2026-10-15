@@ -349,6 +349,63 @@ describe('vencimiento, gracia, suspensión de solo lectura y renovación', () =>
   });
 });
 
+describe('límites del plan', () => {
+  const product = (nombre: string, over: Record<string, unknown> = {}) => ({
+    nombre,
+    categoria: 'Farmacia',
+    unidad: 'unidad',
+    costo: '1.00',
+    precioVenta: '2.00',
+    stockInicial: '0',
+    stockMin: '0',
+    ...over,
+  });
+
+  it('el servidor impide pasar del máximo de productos; descontinuar libera cupo y reactivar lo vuelve a exigir', async () => {
+    const o = await activeOwner();
+    const adminConn = await (await getDriver()).admin();
+    try {
+      await adminConn.query(
+        `INSERT INTO billing.plan (id, nombre, descripcion, precio_mensual_centavos, max_usuarios, max_productos, activo)
+         VALUES ('prueba_limite', 'Prueba', 'Plan de prueba con cupo mínimo', 100, 1, 2, false) ON CONFLICT (id) DO NOTHING`,
+      );
+    } finally {
+      await adminConn.release();
+    }
+    await sql(`UPDATE billing.suscripcion SET plan_id = 'prueba_limite' WHERE id = $1`, [o.subId]);
+    const s = api(app, o);
+
+    const first = await s.post('/v1/products', product('Uno'));
+    expect(first.statusCode, first.body).toBe(201);
+    expect((await s.post('/v1/products', product('Dos'))).statusCode).toBe(201);
+    const over = await s.post('/v1/products', product('Tres'));
+    expect(over.statusCode).toBe(409);
+    expect(over.json().code).toBe('plan_limit_products');
+
+    const mp = multipartBody('file', 'productos.csv', 'text/csv', Buffer.from('nombre,precio_venta\nCuatro,5.00\n'));
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/v1/products/import',
+      payload: mp.body,
+      headers: { ...mp.headers, authorization: `Bearer ${o.token}` },
+    });
+    expect(imported.statusCode, imported.body).toBe(200);
+    expect(imported.json()).toMatchObject({ creados: 0, errores: [expect.objectContaining({ mensaje: expect.stringContaining('permite hasta 2 productos') })] });
+
+    expect((await s.post('/v1/products', product('Archivo', { estado: 'descontinuado' }))).statusCode).toBe(201);
+
+    const id = first.json().id as string;
+    expect((await s.patch(`/v1/products/${id}`, { estado: 'descontinuado' })).statusCode).toBe(200);
+    expect((await s.post('/v1/products', product('Tres'))).statusCode).toBe(201);
+    const back = await s.patch(`/v1/products/${id}`, { estado: 'activo' });
+    expect(back.statusCode).toBe(409);
+    expect(back.json().code).toBe('plan_limit_products');
+
+    const plans = (await app.inject({ method: 'GET', url: '/v1/billing/plans' })).json();
+    expect(JSON.stringify(plans)).not.toContain('prueba_limite');
+  });
+});
+
 describe('ledger inmutable, reembolsos y finanzas', () => {
   it('reembolso parcial dentro del límite; nunca más de lo cobrado', async () => {
     const o = await activeOwner();
