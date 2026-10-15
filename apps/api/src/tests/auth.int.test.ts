@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { counterReset } from '../utils/cache.js';
+import { sha256 } from '../utils/crypto.js';
 import { api, bootApp, PASSWORD, refreshCookieFrom, register, shutdown } from './helpers.js';
 
 let app: FastifyInstance;
@@ -81,6 +83,22 @@ describe('login y bloqueo por fuerza bruta', () => {
     expect(locked.statusCode).toBe(429);
     expect(locked.json().code).toBe('locked');
     expect(locked.json().retryAfterSeconds).toBe(900);
+  });
+
+  it('el bloqueo se duplica al reincidir dentro de 24 h (15 min → 30 min → 1 h)', async () => {
+    const s = await register(app);
+    const lockKey = `login:lock:${sha256(s.email)}`;
+    const attempt = (password: string) =>
+      app.inject({ method: 'POST', url: '/v1/auth/login', remoteAddress: '10.0.0.7', payload: { email: s.email, password } });
+    for (const expected of [900, 1800, 3600]) {
+      for (let i = 0; i < 5; i++) expect((await attempt('Incorrecta123')).statusCode).toBe(401);
+      const locked = await attempt(PASSWORD);
+      expect(locked.statusCode).toBe(429);
+      expect(locked.json().retryAfterSeconds).toBe(expected);
+      await counterReset(lockKey);
+      await counterReset('login:ip:10.0.0.7');
+    }
+    expect((await attempt(PASSWORD)).statusCode).toBe(200);
   });
 });
 
