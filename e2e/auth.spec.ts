@@ -98,6 +98,40 @@ test.describe('suscripción → aprobación → activación', () => {
   });
 });
 
+test.describe('catálogo de planes y banner de estado', () => {
+  test('muestra los tres planes en /suscribirme', async ({ page }) => {
+    await page.goto('/suscribirme');
+    await expect(page.getByRole('button', { name: 'Elegir Inicial' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Elegir Profesional' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Elegir Negocio' })).toBeVisible();
+  });
+
+  test('ver=estado sin solicitud: solo banner info, no alerta de error de planes', async ({ page }) => {
+    await page.goto('/suscribirme?ver=estado');
+    await expect(page.getByRole('status').filter({ hasText: 'no tiene una solicitud guardada' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Elegir Profesional' })).toBeVisible();
+    await expect(page.locator('.form-alert.warn[role="alert"]')).toHaveCount(0);
+  });
+
+  test('si fallan los planes, el error opaca el banner ver=estado', async ({ page }) => {
+    await page.route('**/api/v1/billing/plans', (r) =>
+      r.fulfill({
+        status: 503,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          title: 'Servicio no disponible',
+          detail: 'El catálogo de planes no está listo. Intenta de nuevo en unos minutos.',
+          code: 'plans_unavailable',
+        }),
+      }),
+    );
+    await page.goto('/suscribirme?ver=estado');
+    await expect(page.locator('.form-alert.warn[role="alert"]')).toContainText(/catálogo de planes|no está disponible|falló/i);
+    await expect(page.getByText('no tiene una solicitud guardada')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Reintentar/ })).toBeVisible();
+  });
+});
+
 test.describe('registro público retirado', () => {
   for (const legacy of ['/register', '/registro', '/signup', '/onboarding']) {
     test(`${legacy} redirige con 301 a /suscribirme`, async ({ page }) => {

@@ -38,7 +38,13 @@ No cambies `src/lib/auth.tsx`, cookies, callbacks ni validaciones del login para
 
 E2E, `scripts/e2e-api-smoke.mjs` y `scripts/lighthouse-authed.mjs` crean dueños por ese mismo flujo (`scripts/lib/e2e-accounts.mjs`). Playwright arranca la API con datos bancarios de prueba y un administrador E2E sin 2FA (`E2E_PLATFORM_ADMIN_*`, rechazado en producción); el setup global le enrola un TOTP nuevo en cada corrida. Si reutilizas una API ya levantada, arráncala con esas mismas variables. Los scripts se niegan a correr contra un host que no sea local porque cada autorización registra un cobro en el ledger.
 
+## Billing en producción
+
+Planes públicos y rewrite API: [`docs/ops/PROD-BILLING.md`](ops/PROD-BILLING.md) (`API_INTERNAL_URL`, migración 009, seed admin).
+
 ## Respaldos (D-01)
+
+Procedimiento ampliado: [`docs/ops/BACKUP-DR.md`](ops/BACKUP-DR.md).
 
 Objetivo propuesto, a confirmar por el dueño: **RPO 24 h** (como mucho se pierde un día) y **RTO 4 h** (en cuatro horas el servicio vuelve con datos). Hoy no hay ensayo de restauración registrado: el objetivo no está demostrado.
 
