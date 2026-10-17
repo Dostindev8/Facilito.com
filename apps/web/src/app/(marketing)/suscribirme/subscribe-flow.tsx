@@ -8,6 +8,7 @@ import { BankCard, dop, ReceiptPicker, StateBadge, type BankInstructions } from 
 import { BusinessTypeField } from '@/components/ui/business-fields';
 import { Skeleton, Spinner, TextInput, fieldErrorMap } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
+import { site } from '@/lib/site';
 
 interface PlanOption {
   id: string;
@@ -138,8 +139,11 @@ export function SubscribeFlow() {
         <div className="form-alert info" role="status" style={{ marginTop: 20 }}>
           <Clock size={18} aria-hidden />
           <span>
-            Este dispositivo no tiene una solicitud guardada. Abre el enlace privado que copiaste al suscribirte, o escríbenos por{' '}
-            <Link href="/contacto">contacto</Link>.
+            Este dispositivo no tiene una solicitud guardada. Abre el enlace privado que copiaste al suscribirte, o escríbenos desde el{' '}
+            <a href={site.marketingUrl} rel="noopener noreferrer">
+              sitio web
+            </a>
+            .
           </span>
         </div>
       )}
@@ -568,9 +572,9 @@ function StatusView({ saved, onStartOver }: { saved: Saved; onStartOver: () => v
             {data.motivo && <p>Motivo: {data.motivo}</p>}
             <p>Si transferiste, te devolvemos el dinero. Escríbenos para resolverlo.</p>
             <div className="checkout-actions">
-              <Link href="/contacto?motivo=ventas" className="btn btn-outline">
+              <a href={site.marketingUrl} className="btn btn-outline" rel="noopener noreferrer">
                 Contactar
-              </Link>
+              </a>
               <button type="button" className="btn btn-primary" onClick={onStartOver}>
                 Nueva solicitud
               </button>

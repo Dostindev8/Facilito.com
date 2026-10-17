@@ -1,26 +1,24 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
-const publicRoutes = ['/', '/features', '/precios', '/suscribirme', '/contacto', '/nosotros', '/legal/privacidad', '/legal/terminos', '/legal/cookies'];
+const publicRoutes = ['/login', '/suscribirme', '/legal/privacidad', '/legal/terminos', '/legal/cookies'];
 const widths = [375, 768, 1280, 1536];
 
-test('la home tiene un solo h1 y el CTA lleva a suscribirse', async ({ page }) => {
+test('la raíz redirige al login (app, no landing)', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Tu negocio, más fácil cada día');
-  await expect(page.getByRole('link', { name: 'Empezar gratis' })).toHaveCount(0);
-  await page.getByRole('link', { name: 'Suscribirme' }).first().click();
-  await expect(page).toHaveURL(/\/suscribirme/);
-  await expect(page.getByRole('button', { name: /^Elegir / })).toHaveCount(3);
+  await expect(page).toHaveURL(/\/login/);
+  await expect(page.getByRole('heading', { name: /Bienvenido de nuevo/i })).toBeVisible();
+  await expect(page.getByLabel('Correo electrónico')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Tu negocio, más fácil cada día/i })).toHaveCount(0);
 });
 
-test('precios: cada plan abre el checkout con ese plan elegido', async ({ page }) => {
-  await page.goto('/precios');
-  const ctas = page.locator('a[href^="/suscribirme?plan="]');
-  await expect(ctas).toHaveCount(3);
-  await ctas.nth(2).click();
-  await expect(page).toHaveURL(/\/suscribirme\?plan=negocio/);
-  await expect(page.getByText(/Plan elegido:/)).toContainText('Negocio');
+test('rutas de marketing antiguas redirigen al sitio web dedicado', async ({ request }) => {
+  for (const route of ['/features', '/precios', '/nosotros', '/contacto', '/modulos']) {
+    const res = await request.get(route, { maxRedirects: 0 });
+    expect(res.status(), route).toBeGreaterThanOrEqual(300);
+    expect(res.status(), route).toBeLessThan(400);
+    expect(res.headers().location ?? '', route).toMatch(/facilitord-web\.vercel\.app/);
+  }
 });
 
 test('login muestra correo y contraseña, sin registro ni Google', async ({ page }) => {
@@ -34,83 +32,22 @@ test('login muestra correo y contraseña, sin registro ni Google', async ({ page
   await expect(page.getByText('Ingresa tu email')).toBeVisible();
 });
 
+test('suscribirme sigue en la app con los tres planes', async ({ page }) => {
+  await page.goto('/suscribirme');
+  await expect(page.getByRole('heading', { name: /Suscríbete/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Elegir / })).toHaveCount(3);
+});
+
 for (const width of widths) {
   test(`sin scroll horizontal a ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    for (const route of ['/', '/features', '/precios', '/suscribirme', '/contacto']) {
+    for (const route of ['/login', '/suscribirme', '/legal/privacidad']) {
       await page.goto(route);
       const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1);
       expect(fits, route).toBe(true);
     }
   });
 }
-
-test('menú móvil, aviso de cookies y formulario se usan con teclado', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 800 });
-  await page.goto('/');
-  const burger = page.getByRole('button', { name: 'Abrir menú' });
-  await burger.focus();
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('dialog', { name: 'Menú' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'Menú' })).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Configurar' }).click();
-  await page.getByRole('button', { name: 'Rechazar' }).click();
-  await expect(page.getByRole('dialog', { name: /Cookies/ })).toHaveCount(0);
-
-  await page.goto('/contacto');
-  await page.getByLabel('Nombre').focus();
-  await page.keyboard.press('Tab');
-  await expect(page.getByLabel('WhatsApp o celular')).toBeFocused();
-});
-
-test('contacto: validación, honeypot y límite', async ({ page }) => {
-  await page.goto('/contacto?motivo=demo');
-  await page.getByRole('button', { name: 'Enviar mensaje' }).click();
-  await expect(page.getByRole('status')).toContainText(/nombre|Revisa/i);
-  await expect(page.getByRole('status')).not.toContainText('Listo');
-
-  await page.getByLabel('Nombre').fill('Ana Núñez');
-  await page.getByLabel('WhatsApp o celular').fill('8095550101');
-  await page.getByLabel('Correo').fill('ana@ejemplo.test');
-  await page.getByLabel('Mensaje').fill('Quiero una demo para mi colmado esta semana.');
-  await page.locator('input[name="company_website"]').fill('https://spam.test');
-  await page.getByRole('button', { name: 'Enviar mensaje' }).click();
-  await expect(page.getByRole('status')).toContainText('No pudimos enviar');
-
-  await page.locator('input[name="company_website"]').fill('');
-  for (let i = 0; i < 5; i += 1) {
-    await page.getByRole('button', { name: 'Enviar mensaje' }).click();
-    await expect(page.getByRole('status')).toContainText('Listo');
-  }
-  await page.getByRole('button', { name: 'Enviar mensaje' }).click();
-  await expect(page.getByRole('status')).toContainText('Demasiados envíos');
-});
-
-test('reduced motion no monta el video', async ({ browser }) => {
-  const context = await browser.newContext({ reducedMotion: 'reduce' });
-  const page = await context.newPage();
-  await page.goto('/');
-  await expect(page.locator('video')).toHaveCount(0);
-  await context.close();
-});
-
-test('saveData no pide el video', async ({ page }) => {
-  const videoRequests: string[] = [];
-  page.on('request', (request) => {
-    if (request.url().includes('/media/') && request.url().includes('loop')) videoRequests.push(request.url());
-  });
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'connection', {
-      configurable: true,
-      value: { saveData: true, effectiveType: '4g' },
-    });
-  });
-  await page.goto('/');
-  await expect(page.locator('video')).toHaveCount(0);
-  expect(videoRequests).toEqual([]);
-});
 
 for (const route of publicRoutes) {
   test(`axe sin violaciones serias en ${route}`, async ({ page }) => {

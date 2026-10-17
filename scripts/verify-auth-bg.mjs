@@ -31,14 +31,13 @@ const contrast = (a, b) => {
   return (l1 + 0.05) / (l2 + 0.05);
 };
 
-/** Worst WCAG contrast of each brand-panel text node against the real pixels behind it (text hidden). */
+/** Worst WCAG contrast of auth-card text against the real pixels behind it (text hidden). The card sits on a white surface; we still sample the screenshot under each glyph. */
 async function textContrast(page) {
   const boxes = await page.evaluate(() => {
     const out = [];
-    for (const el of document.querySelectorAll('.brand-panel h1, .brand-panel h1 em, .brand-sub, .value-item strong, .value-item span:not(.value-icon), .script-line, .brand-foot span')) {
+    for (const el of document.querySelectorAll('.auth-card h2, .auth-card .lead, .auth-card label, .auth-switch, .auth-note')) {
       const cs = getComputedStyle(el);
       if (cs.display === 'none' || cs.visibility === 'hidden') continue;
-      if (el.closest('.value-item') && getComputedStyle(el.closest('.value-item')).backgroundColor !== 'rgba(0, 0, 0, 0)') continue;
       const m = cs.color.match(/\d+(\.\d+)?/g).map(Number);
       const range = document.createRange();
       range.selectNodeContents(el);
@@ -50,7 +49,7 @@ async function textContrast(page) {
     document.documentElement.classList.add('__hide-text');
     const st = document.createElement('style');
     st.id = '__hide-text';
-    st.textContent = '.__hide-text .brand-panel *{color:transparent!important;text-shadow:none!important} .__hide-text .brand-panel svg{visibility:hidden}';
+    st.textContent = '.__hide-text .auth-card *{color:transparent!important;text-shadow:none!important} .__hide-text .auth-card svg{visibility:hidden}';
     document.head.append(st);
     return out;
   });

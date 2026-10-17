@@ -9,6 +9,7 @@ import { homeFor, useAuth } from '@/lib/auth';
 import { site } from '@/lib/site';
 import { safeNext } from '@/components/auth/auth-layout';
 import { PasswordInput } from '@/components/auth/password-input';
+import { Logo } from '@/components/brand/logo';
 import { Field, Spinner, fieldErrorMap } from '@/components/ui/primitives';
 
 function focusFirstInvalid(form: HTMLFormElement | null) {
@@ -96,6 +97,9 @@ function LoginForm({ login, onDone }: { login: ReturnType<typeof useAuth>['login
 
   return (
     <>
+      <div className="auth-brand">
+        <Logo size={48} priority />
+      </div>
       <h2>¡Bienvenido de nuevo!</h2>
       <p className="lead">Ingresa a tu cuenta y sigue haciendo crecer tu negocio.</p>
       <form ref={formRef} method="post" className="auth-form" onSubmit={submit} noValidate>

@@ -6,7 +6,7 @@ describe('seo helpers', () => {
   it('arma URL absoluta sin doble barra', () => {
     process.env.NEXT_PUBLIC_SITE_URL = 'https://facilito.example/';
     expect(siteUrl().origin).toBe('https://facilito.example');
-    expect(absoluteUrl('/precios')).toBe('https://facilito.example/precios');
+    expect(absoluteUrl('/login')).toBe('https://facilito.example/login');
   });
 
   it('sin URL configurada usa el dominio de producción de Vercel y nunca localhost en un deploy', () => {
@@ -38,8 +38,8 @@ describe('seo helpers', () => {
 
   it('numera las migas', () => {
     const data = breadcrumbJsonLd([
-      { name: 'Inicio', path: '/' },
-      { name: 'Precios', path: '/precios' },
+      { name: 'Login', path: '/login' },
+      { name: 'Suscribirme', path: '/suscribirme' },
     ]);
     const items = data.itemListElement as { position: number }[];
     expect(items.map((item) => item.position)).toEqual([1, 2]);

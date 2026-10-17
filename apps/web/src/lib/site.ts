@@ -21,6 +21,15 @@ export function siteUrl(): URL {
   }
 }
 
+function marketingOrigin(): string {
+  const raw = process.env.NEXT_PUBLIC_MARKETING_URL?.trim() || 'https://facilitord-web.vercel.app';
+  try {
+    return trimSlash(new URL(raw).origin);
+  } catch {
+    return 'https://facilitord-web.vercel.app';
+  }
+}
+
 export const site = {
   name: 'Facilito',
   legalName: 'Facilito by Logic Code Spot',
@@ -36,6 +45,8 @@ export const site = {
   email: process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() ?? '',
   /** Digits only, country code included. Empty until the business publishes a line. */
   whatsappE164: (process.env.NEXT_PUBLIC_WHATSAPP_E164 ?? '').replace(/\D/g, ''),
+  /** Public marketing site (separate deploy). This app hosts login, panel and checkout only. */
+  marketingUrl: marketingOrigin(),
   /** There is no self sign-up: new businesses pay, an admin authorizes, and the owner gets an invitation. */
   subscribePath: '/suscribirme',
   loginPath: '/login',

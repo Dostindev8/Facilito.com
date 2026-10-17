@@ -1079,15 +1079,13 @@ textarea.input {
   gap: 2px;
 }
 
-/* ───────────── Auth (login / registro) ───────────── */
+/* ───────────── Auth (login / recuperar / activar) — app-only, no marketing panel ───────────── */
 .auth-page {
   position: relative;
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 32px;
-  padding: 40px clamp(20px, 5vw, 80px);
+  place-items: center;
+  padding: 28px clamp(16px, 4vw, 40px);
   overflow: hidden;
   isolation: isolate;
 }
@@ -1144,8 +1142,8 @@ textarea.input {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(90% 55% at 0% 100%, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 100%),
-    linear-gradient(100deg, rgba(255, 255, 255, 0.88) 0%, rgba(255, 255, 255, 0.7) 42%, rgba(255, 255, 255, 0.16) 100%);
+    radial-gradient(70% 60% at 50% 40%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.12) 55%, rgba(255, 255, 255, 0) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.45) 45%, rgba(255, 255, 255, 0.28) 100%);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1156,139 +1154,21 @@ textarea.input {
   }
 }
 
-.brand-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 26px;
-  max-width: 560px;
-}
-
-.brand-logo {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.brand-logo .logo-word {
-  font-size: clamp(2rem, 3.4vw, 2.9rem);
-}
-
-.brand-panel h1 {
-  font-size: clamp(1.9rem, 3.6vw, 3rem);
-  font-weight: 700;
-  line-height: 1.12;
-  letter-spacing: -0.02em;
-}
-
-.brand-panel h1 em {
-  font-style: normal;
-  color: var(--green);
-}
-
-.brand-sub {
-  color: var(--ink-2);
-  font-size: 1.05rem;
-  max-width: 460px;
-}
-
-.value-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.value-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px;
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(6px);
-  box-shadow: var(--shadow-sm);
-}
-
-.value-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-}
-
-.value-icon.green {
-  background: var(--green-50);
-  color: var(--green-600);
-}
-
-.value-icon.orange {
-  background: var(--orange-50);
-  color: var(--orange);
-}
-
-.value-icon.blue {
-  background: var(--blue-50);
-  color: var(--blue);
-}
-
-.value-item > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.value-item strong {
-  font-size: 0.95rem;
-}
-
-.value-item > div > span {
-  font-size: 0.82rem;
-  color: var(--muted);
-}
-
-.script-line {
-  font-family: var(--font-hand);
-  color: var(--orange);
-  font-size: clamp(1.6rem, 2.6vw, 2.2rem);
-  font-weight: 700;
-  line-height: 1.1;
-}
-
-.brand-foot {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--ink-2);
-  font-size: 0.9rem;
-}
-
-.brand-foot span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.brand-foot .muted {
-  color: var(--ink-2);
-}
-
-/* Over the photo the brand orange needs a deeper tone to stay ≥ 3:1 for large text. */
-.brand-panel .script-line {
-  color: #b45709;
-}
-
 .auth-card {
-  justify-self: center;
+  position: relative;
+  z-index: 1;
   width: 100%;
-  max-width: 470px;
+  max-width: 440px;
   background: #fff;
   border-radius: 24px;
   box-shadow: var(--shadow-lg);
   padding: 28px clamp(20px, 3vw, 36px) 32px;
+}
+
+.auth-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 18px;
 }
 
 .auth-card h2 {
@@ -2837,35 +2717,11 @@ textarea.input {
 
 @media (max-width: 1023px) {
   .auth-page {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 28px;
-    padding: 28px 20px 40px;
-    align-content: start;
-  }
-
-  .auth-bg::after {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.76) 55%, rgba(255, 255, 255, 0.5) 100%);
+    padding: 24px 16px 32px;
   }
 
   .auth-bg-image {
     animation-name: auth-ken-burns-sm;
-  }
-
-  .brand-panel {
-    width: 100%;
-    max-width: 640px;
-    justify-self: center;
-    text-align: center;
-    align-items: center;
-    gap: 18px;
-  }
-
-  .brand-sub {
-    margin: 0 auto;
-  }
-
-  .brand-foot {
-    align-items: center;
   }
 
   .settings-grid {
@@ -2977,52 +2833,7 @@ textarea.input {
   }
 
   .auth-page {
-    gap: 20px;
-    padding-top: 20px;
-  }
-
-  .brand-panel {
-    gap: 12px;
-  }
-
-  .brand-panel h1 {
-    font-size: 1.55rem;
-  }
-
-  .brand-sub,
-  .brand-foot {
-    display: none;
-  }
-
-  .value-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    width: 100%;
-  }
-
-  .value-item {
-    align-items: center;
-    text-align: center;
-    gap: 6px;
-    padding: 10px 6px;
-  }
-
-  .value-icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
-  }
-
-  .value-item strong {
-    font-size: 0.78rem;
-  }
-
-  .value-item > div > span {
-    display: none;
-  }
-
-  .script-line {
-    font-size: 1.35rem;
+    padding-top: 16px;
   }
 
   .form-grid {
