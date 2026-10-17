@@ -48,7 +48,65 @@ interface Saved {
 }
 
 const STORAGE_KEY = 'facilito:solicitud';
+const PLANS_CACHE_KEY = 'facilito:plans-cache';
 const tokenHeader = (s: Saved) => ({ 'x-solicitud-token': s.token });
+
+type PlansPayload = { items: PlanOption[]; metodos: { transferencia: boolean; tarjeta: boolean } };
+
+function readPlansCache(): PlansPayload | null {
+  try {
+    const raw = sessionStorage.getItem(PLANS_CACHE_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as PlansPayload;
+    return Array.isArray(v?.items) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePlansCache(data: PlansPayload) {
+  try {
+    sessionStorage.setItem(PLANS_CACHE_KEY, JSON.stringify(data));
+  } catch {
+    /* private mode */
+  }
+}
+
+function plansErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) return errorMessage(error);
+  if (error.code === 'network' || error.isNetwork) {
+    return 'No pudimos conectar con el servidor. Revisa tu internet e intenta de nuevo.';
+  }
+  if (error.code === 'timeout') {
+    return 'El servidor tardó demasiado. Revisa tu conexión e intenta de nuevo.';
+  }
+  if (error.status === 404) {
+    return 'No encontramos el catálogo de planes. Actualiza la página o escríbenos desde el sitio web.';
+  }
+  if (error.status === 503 || error.code === 'plans_unavailable' || error.code === 'unavailable') {
+    return 'El catálogo de planes no está disponible ahora. Intenta en unos minutos.';
+  }
+  if (error.status >= 500) {
+    return 'El servicio de planes falló. Intenta de nuevo en unos segundos.';
+  }
+  return error.detail || 'No pudimos cargar los planes.';
+}
+
+async function fetchPlansWithBackoff(): Promise<PlansPayload> {
+  let last: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await publicGet<PlansPayload>('/v1/billing/plans');
+    } catch (e) {
+      last = e;
+      const retryable =
+        e instanceof ApiError && (e.isNetwork || e.code === 'timeout' || e.status >= 500 || e.code === 'plans_unavailable');
+      if (!retryable || attempt === 2) throw e;
+      await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
+    }
+  }
+  throw last;
+}
 
 function readSaved(): Saved | null {
   const hash = new URLSearchParams(window.location.hash.slice(1)).get('s');
@@ -135,25 +193,15 @@ export function SubscribeFlow() {
 
   return (
     <>
-      {missing && (
-        <div className="form-alert info" role="status" style={{ marginTop: 20 }}>
-          <Clock size={18} aria-hidden />
-          <span>
-            Este dispositivo no tiene una solicitud guardada. Abre el enlace privado que copiaste al suscribirte, o escríbenos desde el{' '}
-            <a href={site.marketingUrl} rel="noopener noreferrer">
-              sitio web
-            </a>
-            .
-          </span>
-        </div>
-      )}
       <Stepper current={step === 'plan' ? 0 : 1} />
       {step === 'plan' ? (
         <PlanStep
           selected={plan}
+          showMissingBanner={missing}
           onSelect={(id) => {
             setPlan(id);
             setStep('datos');
+            setMissing(false);
             requestAnimationFrame(() => document.getElementById('checkout-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
           }}
         />
@@ -175,14 +223,32 @@ export function SubscribeFlow() {
 }
 
 function usePlans() {
-  const [data, setData] = useState<{ items: PlanOption[]; metodos: { transferencia: boolean; tarjeta: boolean } } | null>(null);
+  const [data, setData] = useState<PlansPayload | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [stale, setStale] = useState(false);
+  const [loading, setLoading] = useState(true);
   const load = useCallback(() => {
     setError(null);
-    publicGet<{ items: PlanOption[]; metodos: { transferencia: boolean; tarjeta: boolean } }>('/v1/billing/plans').then(setData, setError);
+    setLoading(true);
+    const cached = readPlansCache();
+    if (cached?.items.length) {
+      setData(cached);
+      setStale(true);
+    }
+    fetchPlansWithBackoff()
+      .then((fresh) => {
+        writePlansCache(fresh);
+        setData(fresh);
+        setStale(false);
+        setError(null);
+      })
+      .catch((e) => {
+        if (!cached?.items.length) setError(e);
+      })
+      .finally(() => setLoading(false));
   }, []);
   useEffect(load, [load]);
-  return { data, error, reload: load };
+  return { data, error, stale, loading, reload: load };
 }
 
 function LoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
@@ -190,10 +256,25 @@ function LoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) 
     <div className="form-alert warn" role="alert">
       <TriangleAlert size={18} />
       <span>
-        {errorMessage(error)}{' '}
+        {plansErrorMessage(error)}{' '}
         <button type="button" className="link-btn" onClick={onRetry}>
           <RefreshCw size={14} aria-hidden /> Reintentar
         </button>
+      </span>
+    </div>
+  );
+}
+
+function MissingRequestBanner() {
+  return (
+    <div className="form-alert info" role="status" style={{ marginTop: 20 }}>
+      <Clock size={18} aria-hidden />
+      <span>
+        Este dispositivo no tiene una solicitud guardada. Abre el enlace privado que copiaste al suscribirte, o escríbenos desde el{' '}
+        <a href={site.marketingUrl} rel="noopener noreferrer">
+          sitio web
+        </a>
+        .
       </span>
     </div>
   );
@@ -210,31 +291,67 @@ function PlansSkeleton() {
   );
 }
 
-function PlanStep({ selected, onSelect }: { selected: string | null; onSelect: (id: string) => void }) {
+function PlanStep({
+  selected,
+  onSelect,
+  showMissingBanner,
+}: {
+  selected: string | null;
+  onSelect: (id: string) => void;
+  showMissingBanner: boolean;
+}) {
   const plans = usePlans();
+  // One banner at a time: plan load errors beat the "missing request" info banner.
   if (plans.error) return <LoadError error={plans.error} onRetry={plans.reload} />;
-  if (!plans.data) return <PlansSkeleton />;
-  return (
-    <div className="mkt-prices checkout-plans">
-      {plans.data.items.map((p, i) => (
-        <article key={p.id} className={`mkt-price${selected === p.id || (!selected && i === 1) ? ' featured' : ''}`}>
-          <h2>{p.nombre}</h2>
-          <strong>
-            {dop(p.precioMensualCentavos, p.moneda)}
-            <span style={{ fontSize: '1rem', fontWeight: 600 }}> / mes</span>
-          </strong>
-          <p>{p.descripcion}</p>
-          <ul>
-            <li>Hasta {p.maxUsuarios} usuarios</li>
-            <li>{p.maxProductos ? `Hasta ${p.maxProductos.toLocaleString('es-DO')} productos` : 'Productos ilimitados'}</li>
-            {p.copilot && <li>Asistente Copilot</li>}
-          </ul>
-          <button type="button" className="btn btn-primary btn-block" onClick={() => onSelect(p.id)}>
-            Elegir {p.nombre}
+  if (!plans.data || (plans.loading && !plans.data.items.length)) return <PlansSkeleton />;
+  if (plans.data.items.length === 0) {
+    return (
+      <div className="form-alert warn" role="status">
+        <TriangleAlert size={18} />
+        <span>
+          No hay planes publicados ahora.{' '}
+          <button type="button" className="link-btn" onClick={plans.reload}>
+            <RefreshCw size={14} aria-hidden /> Reintentar
           </button>
-        </article>
-      ))}
-    </div>
+          {' · '}
+          <a href={site.marketingUrl} rel="noopener noreferrer">
+            Contactar
+          </a>
+        </span>
+      </div>
+    );
+  }
+  return (
+    <>
+      {showMissingBanner ? (
+        <MissingRequestBanner />
+      ) : plans.stale ? (
+        <div className="form-alert info" role="status" style={{ marginTop: 20 }}>
+          <Clock size={18} aria-hidden />
+          <span>Mostrando la última lista guardada; puede estar desactualizada.</span>
+        </div>
+      ) : null}
+      <div className="mkt-prices checkout-plans">
+        {plans.data.items.map((p, i) => (
+          <article key={p.id} className={`mkt-price${selected === p.id || (!selected && i === 1) ? ' featured' : ''}`}>
+            <h2>{p.nombre}</h2>
+            <strong>
+              {dop(p.precioMensualCentavos, p.moneda)}
+              <span style={{ fontSize: '1rem', fontWeight: 600 }}> / mes</span>
+            </strong>
+            <p>{p.descripcion}</p>
+            <ul>
+              <li>Hasta {p.maxUsuarios} usuarios</li>
+              <li>{p.maxProductos ? `Hasta ${p.maxProductos.toLocaleString('es-DO')} productos` : 'Productos ilimitados'}</li>
+              {p.copilot && <li>Asistente Copilot</li>}
+            </ul>
+            <button type="button" className="btn btn-primary btn-block" onClick={() => onSelect(p.id)}>
+              Elegir {p.nombre}
+            </button>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -271,16 +388,24 @@ function DetailsStep({ planId, onBack, onCreated }: { planId: string | null; onB
     if (!planId) return onBack();
     setBusy(true);
     try {
-      const c = await publicPost<Checkout>('/v1/billing/checkout', {
-        planId,
-        nombre: form.nombre.trim(),
-        email: form.email.trim(),
-        ...(form.telefono.trim() ? { telefono: form.telefono.trim() } : {}),
-        razonSocial: form.razonSocial.trim(),
-        rnc: form.rnc,
-        ...(form.tipoNegocio.trim() ? { tipoNegocio: form.tipoNegocio.trim() } : {}),
-        aceptaTerminos: true,
-      });
+      const idempotencyKey =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `ck-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const c = await publicPost<Checkout>(
+        '/v1/billing/checkout',
+        {
+          planId,
+          nombre: form.nombre.trim(),
+          email: form.email.trim(),
+          ...(form.telefono.trim() ? { telefono: form.telefono.trim() } : {}),
+          razonSocial: form.razonSocial.trim(),
+          rnc: form.rnc,
+          ...(form.tipoNegocio.trim() ? { tipoNegocio: form.tipoNegocio.trim() } : {}),
+          aceptaTerminos: true,
+        },
+        { 'idempotency-key': idempotencyKey },
+      );
       onCreated(c);
     } catch (err) {
       setErrors(fieldErrorMap(err));

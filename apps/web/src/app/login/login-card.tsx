@@ -98,14 +98,15 @@ function LoginForm({ login, onDone }: { login: ReturnType<typeof useAuth>['login
   return (
     <>
       <div className="auth-brand">
-        <Logo size={48} priority />
+        <Logo size={56} priority />
+        <span className="auth-brand-name">Facilito</span>
       </div>
-      <h2>¡Bienvenido de nuevo!</h2>
-      <p className="lead">Ingresa a tu cuenta y sigue haciendo crecer tu negocio.</p>
-      <form ref={formRef} method="post" className="auth-form" onSubmit={submit} noValidate>
+      <h1 className="auth-title">Iniciar sesión</h1>
+      <p className="lead">Entra a tu negocio y continúa donde lo dejaste.</p>
+      <form ref={formRef} method="post" className="auth-form" onSubmit={submit} noValidate aria-busy={busy}>
         {error && (
           <div className="form-alert" role="alert">
-            <TriangleAlert size={18} /> <span>{error}</span>
+            <TriangleAlert size={18} aria-hidden /> <span>{error}</span>
           </div>
         )}
         <IconInput
@@ -121,6 +122,7 @@ function LoginForm({ login, onDone }: { login: ReturnType<typeof useAuth>['login
           maxLength={320}
           error={fields.email}
           required
+          autoFocus={!needTotp}
         />
         <PasswordInput
           label="Contraseña"
@@ -154,8 +156,16 @@ function LoginForm({ login, onDone }: { login: ReturnType<typeof useAuth>['login
           </label>
           <Link href="/recuperar">¿Olvidaste tu contraseña?</Link>
         </div>
-        <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
-          {busy ? <Spinner size={18} /> : null} Iniciar sesión {!busy && <ArrowRight size={18} aria-hidden />}
+        <button type="submit" className="btn btn-primary btn-block" disabled={busy} aria-disabled={busy}>
+          {busy ? (
+            <>
+              <Spinner size={18} /> Entrando…
+            </>
+          ) : (
+            <>
+              Iniciar sesión <ArrowRight size={18} aria-hidden />
+            </>
+          )}
         </button>
         <p className="auth-switch">
           ¿Aún no tienes cuenta? <Link href={site.subscribePath}>Elige un plan y suscríbete</Link>

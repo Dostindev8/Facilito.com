@@ -245,10 +245,10 @@ export async function authRequest(path: string, body: unknown): Promise<SessionU
   return data.user;
 }
 
-export async function publicPost<T>(path: string, body: unknown): Promise<T> {
+export async function publicPost<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
   const res = await rawFetch(`/api${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw await toApiError(res);

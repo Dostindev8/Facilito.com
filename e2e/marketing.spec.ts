@@ -7,7 +7,7 @@ const widths = [375, 768, 1280, 1536];
 test('la raíz redirige al login (app, no landing)', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL(/\/login/);
-  await expect(page.getByRole('heading', { name: /Bienvenido de nuevo/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Iniciar sesión$/i })).toBeVisible();
   await expect(page.getByLabel('Correo electrónico')).toBeVisible();
   await expect(page.getByRole('heading', { name: /Tu negocio, más fácil cada día/i })).toHaveCount(0);
 });
