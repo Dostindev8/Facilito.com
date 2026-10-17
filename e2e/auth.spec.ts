@@ -68,7 +68,8 @@ test.describe('suscripción → aprobación → activación', () => {
     const ctx = await browser.newContext();
     const p = await ctx.newPage();
     await p.goto(new URL(url).pathname + new URL(url).search);
-    await expect(p.getByRole('alert')).toBeVisible();
+    // Next.js also mounts #__next-route-announcer__ with role=alert; target the form alert only.
+    await expect(p.locator('.form-alert[role="alert"]')).toBeVisible();
     await expect(p.getByLabel('Contraseña', { exact: true })).toHaveCount(0);
     await expect(p.getByRole('link', { name: 'inicia sesión' })).toBeVisible();
     await ctx.close();
