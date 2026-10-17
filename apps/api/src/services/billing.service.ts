@@ -15,7 +15,7 @@ import {
 } from '@facilito/domain';
 import { getDriver, withAuthBootstrap, withTenant, type Queryable } from '../db/client.js';
 import { getEnv } from '../config/env.js';
-import { AppError } from '../http/errors.js';
+import { AppError, mapDbError } from '../http/errors.js';
 import { businessTypeField, pagination, safeText, uuidParam } from '../http/validators.js';
 import { hashPassword } from '../auth/tokens.js';
 import { forgetSessionsOf } from '../auth/session-status.js';
@@ -130,37 +130,127 @@ async function useContext(q: Queryable, ctx: { persona: string; tenant?: string;
 
 /* ───────────── Public: plans and checkout ───────────── */
 
-export async function listPlans() {
-  const rows = await withAuthBootstrap(async (q) =>
-    (
-      await q.query<{
-        id: string;
-        nombre: string;
-        descripcion: string;
-        precio_mensual_centavos: string | number;
-        moneda: string;
-        max_usuarios: number;
-        max_productos: number | null;
-        copilot: boolean;
-      }>(
-        `SELECT id, nombre, descripcion, precio_mensual_centavos, moneda, max_usuarios, max_productos, copilot
-           FROM billing.plan WHERE activo ORDER BY orden, precio_mensual_centavos`,
-      )
-    ).rows,
-  );
+const DEFAULT_PLANS: ReadonlyArray<{
+  id: string;
+  nombre: string;
+  descripcion: string;
+  precio_mensual_centavos: number;
+  max_usuarios: number;
+  max_productos: number | null;
+  copilot: boolean;
+  orden: number;
+}> = [
+  {
+    id: 'inicial',
+    nombre: 'Inicial',
+    descripcion: 'Ventas, facturación, inventario y reportes para un negocio que empieza.',
+    precio_mensual_centavos: 69000,
+    max_usuarios: 2,
+    max_productos: 500,
+    copilot: false,
+    orden: 1,
+  },
+  {
+    id: 'profesional',
+    nombre: 'Profesional',
+    descripcion: 'Todo lo de Inicial con más usuarios, más productos y el asistente Copilot.',
+    precio_mensual_centavos: 149000,
+    max_usuarios: 5,
+    max_productos: 5000,
+    copilot: true,
+    orden: 2,
+  },
+  {
+    id: 'negocio',
+    nombre: 'Negocio',
+    descripcion: 'Para negocios con varios empleados: productos ilimitados y prioridad en soporte.',
+    precio_mensual_centavos: 249000,
+    max_usuarios: 15,
+    max_productos: null,
+    copilot: true,
+    orden: 3,
+  },
+];
+
+function mapPlanRow(p: {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  precio_mensual_centavos: string | number;
+  moneda: string;
+  max_usuarios: number;
+  max_productos: number | null;
+  copilot: boolean;
+}) {
   return {
-    items: rows.map((p) => ({
-      id: p.id,
-      nombre: p.nombre,
-      descripcion: p.descripcion,
-      precioMensualCentavos: Number(p.precio_mensual_centavos),
-      moneda: p.moneda,
-      maxUsuarios: p.max_usuarios,
-      maxProductos: p.max_productos,
-      copilot: p.copilot,
-    })),
-    metodos: { transferencia: transferProvider.disponible(), tarjeta: gatewayProvider.disponible() },
+    id: p.id,
+    nombre: p.nombre,
+    descripcion: p.descripcion,
+    precioMensualCentavos: Number(p.precio_mensual_centavos),
+    moneda: p.moneda,
+    maxUsuarios: p.max_usuarios,
+    maxProductos: p.max_productos,
+    copilot: p.copilot,
   };
+}
+
+export async function listPlans() {
+  try {
+    const rows = await withAuthBootstrap(async (q) =>
+      (
+        await q.query<{
+          id: string;
+          nombre: string;
+          descripcion: string;
+          precio_mensual_centavos: string | number;
+          moneda: string;
+          max_usuarios: number;
+          max_productos: number | null;
+          copilot: boolean;
+        }>(
+          `SELECT id, nombre, descripcion, precio_mensual_centavos, moneda, max_usuarios, max_productos, copilot
+             FROM billing.plan WHERE activo ORDER BY orden, precio_mensual_centavos`,
+        )
+      ).rows,
+    );
+    return {
+      items: rows.map(mapPlanRow),
+      metodos: { transferencia: transferProvider.disponible(), tarjeta: gatewayProvider.disponible() },
+    };
+  } catch (e) {
+    const mapped = mapDbError(e);
+    if (mapped) throw mapped;
+    throw e;
+  }
+}
+
+/** Idempotent seed of launch plans. Does not overwrite prices or active flags on conflict. */
+export async function seedDefaultPlans(actorId: string, ip: string) {
+  return asPlatformAdmin(actorId, async (q) => {
+    let inserted = 0;
+    for (const p of DEFAULT_PLANS) {
+      const r = await q.query(
+        `INSERT INTO billing.plan (id, nombre, descripcion, precio_mensual_centavos, max_usuarios, max_productos, copilot, orden)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (id) DO NOTHING`,
+        [p.id, p.nombre, p.descripcion, p.precio_mensual_centavos, p.max_usuarios, p.max_productos, p.copilot, p.orden],
+      );
+      inserted += r.rowCount ?? 0;
+    }
+    const all = await q.query<{
+      id: string;
+      nombre: string;
+      descripcion: string;
+      precio_mensual_centavos: string | number;
+      moneda: string;
+      max_usuarios: number;
+      max_productos: number | null;
+      copilot: boolean;
+      activo: boolean;
+    }>(`SELECT id, nombre, descripcion, precio_mensual_centavos, moneda, max_usuarios, max_productos, copilot, activo FROM billing.plan ORDER BY orden`);
+    await log(q, actorId, 'billing.planes_seed', actorId, { inserted, total: all.rows.length }, ip);
+    return { inserted, total: all.rows.length, items: all.rows.map((row) => ({ ...mapPlanRow(row), activo: row.activo })) };
+  });
 }
 
 const checkoutSchema = z
@@ -189,15 +279,42 @@ const solicitudAuth = z.object({ id: z.string().uuid('Solicitud inválida'), tok
 
 const SOLICITUD_NOT_FOUND = () => new AppError(404, 'Solicitud no encontrada', 'El enlace de tu solicitud no es válido.', 'not_found');
 
-export async function startCheckout(input: unknown, ip: string) {
+function normalizeIdempotencyKey(raw: string | undefined): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const key = raw.trim();
+  return /^[A-Za-z0-9_-]{8,80}$/.test(key) ? key : null;
+}
+
+export async function startCheckout(input: unknown, ip: string, idempotencyKeyRaw?: string) {
   const d = checkoutSchema.parse(input);
   const provider = providerById('manual')!;
   const start = await provider.startCheckout({ suscripcionId: '', montoCentavos: 0, email: d.email });
   const id = newUuidsV7();
   const token = randomToken(32);
   const rncHash = hashRnc(d.rnc);
+  const idemKey = normalizeIdempotencyKey(idempotencyKeyRaw);
+  const proveedorRef = idemKey ? `ck:${sha256(idemKey).slice(0, 40)}` : null;
 
   const plan = await withAuthBootstrap(async (q) => {
+    if (proveedorRef) {
+      const prior = await q.query<{ id: string; plan_id: string; monto_centavos: string | number; moneda: string; nombre: string }>(
+        `SELECT s.id, s.plan_id, s.monto_centavos, s.moneda, p.nombre
+           FROM billing.suscripcion s JOIN billing.plan p ON p.id = s.plan_id
+          WHERE s.proveedor = $1 AND s.proveedor_ref = $2
+            AND s.estado IN ('PENDIENTE_PAGO','PENDIENTE_AUTORIZACION')`,
+        [provider.id, proveedorRef],
+      );
+      if (prior.rows[0]) {
+        // Same client key: do not mint a second request; ask them to reopen the saved link.
+        throw new AppError(
+          409,
+          'Solicitud en curso',
+          'Ya enviaste esta solicitud. Abre el enlace de seguimiento que guardaste o escríbenos.',
+          'request_open',
+          { id: prior.rows[0].id },
+        );
+      }
+    }
     const p = await q.query<{ id: string; nombre: string; precio_mensual_centavos: string | number; moneda: string }>(
       `SELECT id, nombre, precio_mensual_centavos, moneda FROM billing.plan WHERE id = $1 AND activo`,
       [d.planId],
@@ -220,14 +337,15 @@ export async function startCheckout(input: unknown, ip: string) {
       throw new AppError(409, 'Solicitud en curso', 'Ya hay una solicitud abierta con ese email o RNC. Usa el enlace que recibiste o escríbenos.', 'request_open');
     }
     await q.query(
-      `INSERT INTO billing.suscripcion (id, plan_id, estado, metodo_pago, proveedor, nombre_contacto, email, telefono, razon_social,
+      `INSERT INTO billing.suscripcion (id, plan_id, estado, metodo_pago, proveedor, proveedor_ref, nombre_contacto, email, telefono, razon_social,
                                         rnc_enc, rnc_hash, tipo_negocio, referencia_pago, monto_centavos, moneda, solicitante_ip, acceso_token_hash)
-       VALUES ($1,$2,'PENDIENTE_PAGO',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+       VALUES ($1,$2,'PENDIENTE_PAGO',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
       [
         id,
         plan.id,
         d.metodo,
         provider.id,
+        proveedorRef,
         d.nombre,
         d.email,
         d.telefono ?? null,
@@ -244,7 +362,7 @@ export async function startCheckout(input: unknown, ip: string) {
     );
     await q.query(
       `INSERT INTO billing.evento (id, suscripcion_id, evento, de, a, detalle, ip) VALUES ($1,$2,'solicitud',NULL,'PENDIENTE_PAGO',$3::jsonb,$4)`,
-      [newUuidsV7(), id, JSON.stringify({ plan: plan.id }), ip.slice(0, 64)],
+      [newUuidsV7(), id, JSON.stringify({ plan: plan.id, idempotent: Boolean(idemKey) }), ip.slice(0, 64)],
     );
     return plan;
   });

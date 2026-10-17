@@ -62,6 +62,13 @@ export function mapDbError(e: unknown): AppError | null {
       return new AppError(400, 'Formato inválido', 'Revisa el formato de los datos enviados.', 'format');
     case '42501':
       return new AppError(403, 'Sin permiso', 'No tienes permiso para esta operación.', 'forbidden');
+    case '42P01':
+      return new AppError(
+        503,
+        'Servicio no disponible',
+        'El catálogo de planes no está listo. Intenta de nuevo en unos minutos.',
+        'plans_unavailable',
+      );
     default:
       return null;
   }

@@ -100,6 +100,36 @@ describe('planes y checkout público', () => {
     expect(body.metodos).toEqual({ transferencia: true, tarjeta: false });
   });
 
+  it('seed admin de planes es idempotente y no pisa filas existentes', async () => {
+    const first = await adminApi().post('/v1/platform/billing/plans/seed');
+    expect(first.statusCode).toBe(200);
+    expect(first.json().total).toBeGreaterThanOrEqual(3);
+    expect(first.json().inserted).toBe(0);
+    const second = await adminApi().post('/v1/platform/billing/plans/seed');
+    expect(second.statusCode).toBe(200);
+    expect(second.json().inserted).toBe(0);
+  });
+
+  it('checkout con Idempotency-Key no crea una segunda solicitud', async () => {
+    const payload = applicant();
+    const key = `idem-key-${seq}-${Date.now()}`;
+    const a = await app.inject({
+      method: 'POST',
+      url: '/v1/billing/checkout',
+      payload,
+      headers: { 'idempotency-key': key },
+    });
+    expect(a.statusCode).toBe(201);
+    const b = await app.inject({
+      method: 'POST',
+      url: '/v1/billing/checkout',
+      payload: applicant(),
+      headers: { 'idempotency-key': key },
+    });
+    expect(b.statusCode).toBe(409);
+    expect(b.json().code).toBe('request_open');
+  });
+
   it('crea la solicitud en PENDIENTE_PAGO con instrucciones bancarias y token de seguimiento', async () => {
     const c = await checkout();
     expect(c.estado).toBe('PENDIENTE_PAGO');

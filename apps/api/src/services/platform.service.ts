@@ -21,7 +21,8 @@ export type PlatformAction =
   | 'suscripcion.cancelar'
   | 'suscripcion.asignar'
   | 'suscripcion.comprobante'
-  | 'suscripcion.barrido';
+  | 'suscripcion.barrido'
+  | 'billing.planes_seed';
 
 const FORBIDDEN = () => new AppError(403, 'Sin permiso', 'Esta sección es solo para administradores de Facilito.', 'forbidden');
 

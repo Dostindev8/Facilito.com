@@ -68,4 +68,5 @@ export async function platformRoutes(app: FastifyInstance): Promise<void> {
   app.get('/v1/platform/finance', async (req) => billing.finance((await requirePlatformAdmin(req)).sub, req.query));
   app.get('/v1/platform/health', async (req) => billing.health((await requirePlatformAdmin(req)).sub));
   app.post('/v1/platform/billing/sweep', async (req) => billing.sweepAsAdmin((await requirePlatformAdmin(req)).sub, req.ip));
+  app.post('/v1/platform/billing/plans/seed', async (req) => billing.seedDefaultPlans((await requirePlatformAdmin(req)).sub, req.ip));
 }

@@ -46,7 +46,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/v1/billing/checkout', { config: strict }, async (req, reply) => {
     reply.status(201);
-    return billing.startCheckout(req.body, req.ip);
+    return billing.startCheckout(req.body, req.ip, header(req, 'idempotency-key'));
   });
 
   app.post<{ Params: { id: string } }>('/v1/billing/checkout/:id/comprobante', { config: strict }, async (req) =>
