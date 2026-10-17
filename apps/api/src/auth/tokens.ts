@@ -68,10 +68,14 @@ export interface AccessClaims {
   rol: RoleCode;
   /** UI hint only: platform endpoints re-check membership in the database. */
   platformAdmin: boolean;
+  /** A second factor (TOTP) was verified when this session family started. */
+  mfa: boolean;
+  /** Refresh-token family: revoking it ends this access token too (checked by session-status). */
+  sid?: string;
   typ: 'access';
 }
 
-export async function signAccessToken(claims: Omit<AccessClaims, 'typ'>): Promise<string> {
+export async function signAccessToken(claims: Omit<AccessClaims, 'typ' | 'mfa'> & { mfa?: boolean }): Promise<string> {
   const { privateKey: key } = await loadKeys();
   const env = getEnv();
   return new SignJWT({
@@ -79,6 +83,8 @@ export async function signAccessToken(claims: Omit<AccessClaims, 'typ'>): Promis
     accesoId: claims.accesoId,
     rol: claims.rol,
     ...(claims.platformAdmin ? { pa: true } : {}),
+    ...(claims.mfa ? { mfa: true } : {}),
+    ...(claims.sid ? { sid: claims.sid } : {}),
     typ: 'access',
   })
     .setProtectedHeader({ alg: 'RS256' })
@@ -100,6 +106,8 @@ export async function verifyAccessToken(token: string): Promise<AccessClaims> {
     accesoId: String(payload.accesoId),
     rol: payload.rol as RoleCode,
     platformAdmin: payload.pa === true,
+    mfa: payload.mfa === true,
+    ...(typeof payload.sid === 'string' ? { sid: payload.sid } : {}),
     typ: 'access',
   };
 }
@@ -127,8 +135,11 @@ export function decryptTotpSecret(enc: string): string {
   return decryptField(enc);
 }
 
+/** One step either side absorbs phone clock drift; the login path blocks replays inside that window. */
+const totpVerifier = authenticator.clone({ window: 1 });
+
 export function verifyTotp(secret: string, token: string): boolean {
-  return authenticator.verify({ token, secret });
+  return totpVerifier.verify({ token, secret });
 }
 
 export async function hashPin(pin: string): Promise<string> {

@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 // End-to-end smoke test through the web origin (Next rewrite → API).
 // Usage: node scripts/e2e-api-smoke.mjs [baseUrl]   (default http://localhost:3000)
+// Owners are created through the real subscription flow, so the API must run with BILLING_BANK_* and either
+// E2E_PLATFORM_ADMIN_EMAIL/PASSWORD (fresh admin, enrolled here) or E2E_ADMIN_* with E2E_ADMIN_TOTP_SECRET.
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
+import { acceptInvitation, adminToken, approvedInvitation, enrolAdminTotp, OWNER_PASSWORD } from './lib/e2e-accounts.mjs';
 
 const BASE = (process.argv[2] ?? 'http://localhost:3000').replace(/\/$/, '');
+if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(BASE) && process.env.SMOKE_ALLOW_REMOTE !== '1') {
+  console.error('Refusing to create subscriptions on a non-local host: they record payments in the ledger. Set SMOKE_ALLOW_REMOTE=1 for a staging copy.');
+  process.exit(2);
+}
 const CSRF = { 'x-facilito-csrf': '1' };
 let passed = 0;
 
@@ -42,27 +49,25 @@ async function call(method, path, { token, body, cookie, headers = {} } = {}) {
   return { res, status: res.status, json };
 }
 
+const adminSecret = process.env.E2E_ADMIN_TOTP_SECRET ?? (await enrolAdminTotp(BASE));
+const adminAccess = await adminToken(BASE, adminSecret);
+
+/** Checkout → receipt → admin approval → invitation accepted: the only way an owner account exists. */
 async function register(suffix) {
-  const email = `e2e.${suffix}.${Date.now()}@facilito.test`;
-  const r = await call('POST', '/v1/auth/register', {
-    body: {
-      nombre: 'Prueba E2E',
-      email,
-      password: 'Facilito!Seguro2026',
-      razonSocial: `Colmado E2E ${suffix}`,
-      rnc: String(100000000 + Math.floor(Math.random() * 899999999)),
-      vertical: 'colmado',
-    },
-  });
-  return { r, email };
+  const inv = await approvedInvitation(BASE, adminAccess, `smoke-${suffix}`);
+  return { r: await acceptInvitation(BASE, inv.invitation), email: inv.email };
 }
 
 console.log(`Facilito E2E smoke → ${BASE}`);
 
-// 1. Register + cookie hardening
-const { r: reg } = await register('a');
-step(`register 201 (got ${reg.status})`, reg.status === 201 || reg.status === 200);
-const token = reg.json.accessToken;
+// 0. Public sign-up is gone
+const legacy = await call('POST', '/v1/auth/register', { body: { email: 'x@facilito.test', password: 'Facilito!Seguro2026' } });
+step(`public register endpoint removed (${legacy.status})`, legacy.status === 404);
+
+// 1. Owner from an approved subscription + cookie hardening
+const { r: reg, email: emailA } = await register('a');
+step(`invitation accepted (got ${reg.status})`, reg.status === 200);
+let token = reg.json.accessToken;
 const tenantId = reg.json.user?.tenantId ?? reg.json.tenantId;
 step('access token returned', typeof token === 'string' && token.split('.').length === 3);
 const ck = cookieFrom(reg.res);
@@ -79,6 +84,11 @@ const reuse = await call('POST', '/v1/auth/refresh', { cookie: ck.value, headers
 step(`reused refresh token rejected (${reuse.status})`, reuse.status === 401);
 const afterReuse = await call('POST', '/v1/auth/refresh', { cookie: ck2.value, headers: CSRF });
 step(`token family revoked after reuse (${afterReuse.status})`, afterReuse.status === 401);
+const killed = await call('GET', '/v1/me', { token });
+step(`access token of the revoked family stops working (${killed.status})`, killed.status === 401);
+const relogin = await call('POST', '/v1/auth/login', { body: { email: emailA, password: OWNER_PASSWORD } });
+step(`owner logs in with the password set on activation (${relogin.status})`, relogin.status === 200 && relogin.json?.user?.suscripcion?.estado === 'ACTIVA');
+token = relogin.json.accessToken;
 
 // 3. Unauthenticated + validation
 const anon = await call('GET', '/v1/products');

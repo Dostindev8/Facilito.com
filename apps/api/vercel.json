@@ -10,5 +10,6 @@
       "includeFiles": "{migrations/**,assets/**}"
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
+  "crons": [{ "path": "/v1/billing/cron/sweep", "schedule": "0 10 * * *" }]
 }

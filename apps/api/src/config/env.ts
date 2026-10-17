@@ -51,6 +51,19 @@ const envSchema = z.object({
   MAIL_FROM: z.string().default(''),
   MAIL_REPLY_TO: z.string().default(''),
   APP_PUBLIC_URL: z.string().default(''),
+  // Bank account shown at checkout for transfers. Without name, account and holder, checkout is closed.
+  BILLING_BANK_NAME: z.string().max(80).default(''),
+  BILLING_BANK_ACCOUNT: z.string().max(40).default(''),
+  BILLING_BANK_ACCOUNT_TYPE: z.string().max(40).default(''),
+  BILLING_BANK_HOLDER: z.string().max(120).default(''),
+  BILLING_BANK_HOLDER_ID: z.string().max(20).default(''),
+  // HMAC secret shared with the card gateway relay. Empty keeps the webhook route closed (404).
+  BILLING_WEBHOOK_SECRET: z.string().default(''),
+  // Inbox that hears about new subscription requests; empty notifies every platform admin.
+  BILLING_NOTIFY_EMAIL: z.string().default(''),
+  INVITATION_TTL_HOURS: z.coerce.number().int().min(1).max(336).default(72),
+  // Vercel Cron sends "Authorization: Bearer <CRON_SECRET>". Empty disables the HTTP trigger of the renewal sweep.
+  CRON_SECRET: z.string().default(''),
   LLM_PROVIDER: z.string().default('stub'),
   PSFE_PROVIDER: z.string().default('stub'),
   FEATURE_ECF_ENABLED: bool('false'),

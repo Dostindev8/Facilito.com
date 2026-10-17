@@ -6,6 +6,7 @@ import { useState } from 'react';
 import {
   ChartColumn,
   ChevronRight,
+  CreditCard,
   FileText,
   Headphones,
   House,
@@ -34,6 +35,7 @@ export const NAV = [
 ] as const;
 
 const PLATFORM_NAV = { href: '/admin', label: 'Admin plataforma', icon: ShieldCheck } as const;
+const BILLING_NAV = { href: '/suscripcion', label: 'Suscripción', icon: CreditCard } as const;
 
 const SUPPORT_URL = process.env.NEXT_PUBLIC_SUPPORT_URL;
 
@@ -41,7 +43,8 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const pathname = usePathname();
   const { user } = useAuth();
   const [support, setSupport] = useState(false);
-  const items = user?.platformAdmin ? [PLATFORM_NAV, ...NAV] : NAV;
+  const billing = !user?.platformAdmin && (user?.rol === 'owner' || user?.rol === 'manager') ? [BILLING_NAV] : [];
+  const items = user?.platformAdmin ? [PLATFORM_NAV, ...NAV] : [...NAV, ...billing];
 
   return (
     <>

@@ -1,11 +1,15 @@
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
+import { authenticator } from 'otplib';
 import { newUuidsV7, type RoleCode } from '@facilito/domain';
 import { buildApp } from '../app.js';
 import { ensureSchema } from '../db/schema.js';
-import { resetDriverForTests, withAuthBootstrap } from '../db/client.js';
+import { resetDriverForTests, withAuthBootstrap, withPersona } from '../db/client.js';
 import { __resetMemoryCacheForTests } from '../utils/cache.js';
 import { hashPassword } from '../auth/tokens.js';
 import { __resetSessionStatusForTests } from '../auth/session-status.js';
+import { provisionOwnerAccount } from '../services/owner-provisioning.js';
+import { provisionPlatformAdmin } from '../db/platform-admin.js';
+import { businessTypeField, instagramField } from '../http/validators.js';
 
 export const PASSWORD = 'Segura12345';
 
@@ -17,6 +21,7 @@ export async function bootApp(): Promise<FastifyInstance> {
   __resetMemoryCacheForTests();
   __resetSessionStatusForTests();
   await ensureSchema();
+  await primeOwnerHash();
   const app = await buildApp();
   await app.ready();
   return app;
@@ -42,25 +47,85 @@ export function refreshCookieFrom(res: LightMyRequestResponse): string {
   return c ? c.split(';')[0]! : '';
 }
 
-export async function register(app: FastifyInstance, overrides: Record<string, unknown> = {}): Promise<Session> {
+export interface OwnerOverrides {
+  nombre?: string;
+  razonSocial?: string;
+  rnc?: string;
+  vertical?: string;
+  tipoNegocio?: string;
+  instagram?: string | null;
+}
+
+/**
+ * Creates a business owner the way an authorized subscription does (there is no public sign-up) and logs in
+ * through the real endpoint, so the session is identical to production.
+ */
+export async function register(app: FastifyInstance, overrides: OwnerOverrides = {}): Promise<Session> {
   emailSeq++;
   const email = `dueno${emailSeq}.${Date.now()}@facilito.test`;
-  const res = await app.inject({
-    method: 'POST',
-    url: '/v1/auth/register',
-    payload: {
-      nombre: 'Dostin Santana',
-      email,
-      password: PASSWORD,
-      razonSocial: `Colmado ${emailSeq}`,
-      rnc: String(rncSeq++),
-      vertical: 'colmado',
-      ...overrides,
-    },
-  });
-  if (res.statusCode !== 201) throw new Error(`register failed ${res.statusCode}: ${res.body}`);
+  const personaId = newUuidsV7();
+  const tenantId = newUuidsV7();
+  const hasVertical = Object.prototype.hasOwnProperty.call(overrides, 'vertical');
+  await withPersona(
+    personaId,
+    (q) =>
+      provisionOwnerAccount(q, {
+        personaId,
+        tenantId,
+        nombre: overrides.nombre ?? 'Dostin Santana',
+        email,
+        passwordHash: ownerHash,
+        razonSocial: overrides.razonSocial ?? `Colmado ${emailSeq}`,
+        rnc: overrides.rnc ?? String(rncSeq++),
+        vertical: hasVertical ? (overrides.vertical ?? null) : 'colmado',
+        tipoNegocio: overrides.tipoNegocio ? (businessTypeField.parse(overrides.tipoNegocio) ?? null) : null,
+        instagram: overrides.instagram ? normalizeInstagram(overrides.instagram) : null,
+      }),
+    { authBootstrap: true, tenantId },
+  );
+  const res = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, password: PASSWORD } });
+  if (res.statusCode !== 200) throw new Error(`owner login failed ${res.statusCode}: ${res.body}`);
   const body = res.json() as { accessToken: string; user: { tenantId: string; personaId: string } };
   return { token: body.accessToken, cookie: refreshCookieFrom(res), tenantId: body.user.tenantId, personaId: body.user.personaId, email };
+}
+
+let ownerHashPromise: Promise<string> | null = null;
+let ownerHash = '';
+export async function primeOwnerHash(): Promise<void> {
+  ownerHashPromise ??= hashPassword(PASSWORD);
+  ownerHash = await ownerHashPromise;
+}
+
+function normalizeInstagram(raw: string): string | null {
+  const parsed = instagramField.safeParse(raw);
+  return parsed.success ? (parsed.data ?? null) : null;
+}
+
+/** TOTP code for the current step, or a neighbouring one (±1 is accepted) so a test can log in again without replaying. */
+export function totpCode(secret: string, stepOffset = 0): string {
+  return authenticator.clone({ epoch: Date.now() + stepOffset * 30_000 }).generate(secret);
+}
+
+/**
+ * A platform admin with TOTP enrolled, logged in with the second factor (the panel refuses sessions without it).
+ * Returns the TOTP secret so tests can produce fresh codes.
+ */
+export async function platformAdminSession(
+  app: FastifyInstance,
+  email = `root.${Date.now()}.${Math.random().toString(36).slice(2, 6)}@facilito.test`,
+  password = 'PlataformaSegura2026',
+): Promise<{ token: string; cookie: string; personaId: string; email: string; password: string; totpSecret: string }> {
+  await provisionPlatformAdmin({ email, password, nombre: 'Root' });
+  const first = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, password } });
+  if (first.statusCode !== 200) throw new Error(`admin login failed ${first.statusCode}: ${first.body}`);
+  const token = first.json().accessToken as string;
+  const setup = await api(app, { token }).post('/v1/auth/totp/setup');
+  const totpSecret = setup.json().secret as string;
+  const verify = await api(app, { token }).post('/v1/auth/totp/verify', { code: authenticator.generate(totpSecret) });
+  if (verify.statusCode !== 200) throw new Error(`totp verify failed ${verify.statusCode}: ${verify.body}`);
+  const second = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, password, totp: authenticator.generate(totpSecret) } });
+  if (second.statusCode !== 200) throw new Error(`admin mfa login failed ${second.statusCode}: ${second.body}`);
+  return { token: second.json().accessToken, cookie: refreshCookieFrom(second), personaId: second.json().user.personaId, email, password, totpSecret };
 }
 
 /** Adds a staff member with the given role to an existing business and logs them in. */

@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
+    "test:coverage": "vitest run --config vitest.config.ts --coverage",
     "test:isolation": "vitest run --config vitest.isolation.config.ts",
     "migrate": "tsx src/db/migrate.ts",
     "db:bootstrap": "tsx src/db/bootstrap.ts",
@@ -44,6 +45,7 @@
     "@types/nodemailer": "^8.0.2",
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.11.11",
+    "@vitest/coverage-v8": "4.1.11",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "vitest": "^4.1.11"

@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/Santo_Domingo
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/Santo_Domingo
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # Minor/patch bumps land together; majors arrive one by one so each can be reviewed and tested.
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # The mobile app pins Expo SDK-compatible versions; upgrade it with `expo install --fix`, not Dependabot.
+      - dependency-name: 'expo*'
+      - dependency-name: 'react-native*'
+      - dependency-name: '@expo/*'

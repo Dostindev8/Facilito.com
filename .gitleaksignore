@@ -2,3 +2,5 @@
 66f4e974f651702831ec4c8cf50a698d4410c436:.github/workflows/ci.yml:generic-api-key:41
 # Throwaway password fixture in the platform-admin integration test, not a real secret.
 b35304ef2462fe4b2ac4eb4707d6bdbaa4d01880:apps/api/src/tests/platform.int.test.ts:generic-api-key:38
+# Throwaway password fixture in the subscription invitation test (single-use link reuse), not a real secret.
+7cfd2e807a18e1d7031242ca3f39b083827b4249:apps/api/src/tests/billing.int.test.ts:generic-api-key:218

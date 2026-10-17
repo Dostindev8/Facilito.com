@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 
 const API_INTERNAL_URL = (process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001').replace(/\/+$/, '');
 const isProd = process.env.NODE_ENV === 'production';
+const MARKETING_URL = (process.env.NEXT_PUBLIC_MARKETING_URL ?? 'https://facilitord-web.vercel.app').replace(/\/+$/, '');
 
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -16,6 +17,8 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@facilito/ui'],
   poweredByHeader: false,
   reactStrictMode: true,
+  // Every page is dynamic (CSP nonce), so metadata would stream into <body>; it is static, so blocking costs nothing.
+  htmlLimitedBots: /.*/,
   experimental: {
     inlineCss: true,
   },
@@ -27,8 +30,17 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
+      // App entry: marketing lives on the separate site (facilitord-web).
+      { source: '/', destination: '/login', permanent: false },
       { source: '/panel', destination: '/inicio', permanent: false },
-      { source: '/onboarding', destination: '/login?tab=registro', permanent: false },
+      // Public sign-up was removed: accounts exist only after payment and admin authorization.
+      ...['/register', '/registro', '/signup', '/onboarding'].map((source) => ({ source, destination: '/suscribirme', statusCode: 301 as const })),
+      // Former landing pages → dedicated marketing deploy.
+      ...['/features', '/precios', '/nosotros', '/contacto', '/modulos'].map((source) => ({
+        source,
+        destination: MARKETING_URL,
+        permanent: true,
+      })),
     ];
   },
   async headers() {

@@ -8,6 +8,12 @@ export default defineConfig({
     testTimeout: 60_000,
     hookTimeout: 120_000,
     fileParallelism: false,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**'],
+      exclude: ['src/tests/**'],
+      reporter: ['text-summary', 'json-summary'],
+    },
     env: {
       NODE_ENV: 'test',
       DATABASE_DRIVER: 'pglite',

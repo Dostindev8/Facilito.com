@@ -12,7 +12,7 @@ const PLATFORM_RNC_SENTINEL = 'platform:none';
  * the same email keeps its data, gets the new password, is unblocked and gains platform membership. The admin also
  * owns the internal platform workspace so the regular session machinery (tenant-scoped tokens) works unchanged.
  */
-export async function provisionPlatformAdmin(input: { email: string; password: string; nombre: string }) {
+export async function provisionPlatformAdmin(input: { email: string; password: string; nombre: string; resetTotp?: boolean }) {
   const email = emailField.parse(input.email);
   const password = passwordSchema.parse(input.password);
   const nombre = input.nombre.trim().slice(0, 120) || 'Administrador';
@@ -35,6 +35,10 @@ export async function provisionPlatformAdmin(input: { email: string; password: s
           WHERE id = $1`,
         [personaId, passwordHash, nombre],
       );
+      // Lost-device recovery: only reachable with the privileged database credentials, never over HTTP.
+      if (input.resetTotp) {
+        await admin.query(`UPDATE identity.persona SET totp_enabled = false, totp_secret_enc = NULL WHERE id = $1`, [personaId]);
+      }
       await admin.query(`UPDATE identity.refresh_token SET revoked_at = now() WHERE persona_id = $1 AND revoked_at IS NULL`, [personaId]);
     } else {
       personaId = newUuidsV7();

@@ -1,14 +1,20 @@
 #!/usr/bin/env node
-// Lighthouse on authenticated pages: starts Chromium with a DevTools port, registers a throwaway business
-// in its default context (Playwright over CDP), then points Lighthouse at the same browser and cookie jar.
+// Lighthouse on authenticated pages: starts Chromium with a DevTools port, opens a throwaway business through the
+// subscription flow in its default context (Playwright over CDP), then points Lighthouse at the same browser and
+// cookie jar. Needs the same API env as scripts/e2e-api-smoke.mjs; local hosts only (it records a ledger payment).
 // Usage: CHROME_PATH=<chrome> node scripts/lighthouse-authed.mjs [baseUrl]
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
+import { adminToken, approvedInvitation, enrolAdminTotp, OWNER_PASSWORD } from './lib/e2e-accounts.mjs';
 
 const BASE = (process.argv[2] ?? 'http://localhost:3000').replace(/\/$/, '');
+if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(BASE) && process.env.SMOKE_ALLOW_REMOTE !== '1') {
+  console.error('Refusing to create subscriptions on a non-local host. Set SMOKE_ALLOW_REMOTE=1 for a staging copy.');
+  process.exit(2);
+}
 const PORT = 9333;
 const CHROME = process.env.CHROME_PATH ?? chromium.executablePath();
 const OUT = path.resolve('test-results', 'lighthouse');
@@ -28,24 +34,16 @@ try {
   if (!browser) throw new Error('Chromium did not open the DevTools port');
   const ctx = browser.contexts()[0];
   const page = ctx.pages()[0] ?? (await ctx.newPage());
-  const res = await page.request.post(`${BASE}/api/v1/auth/register`, {
-    data: {
-      nombre: 'Auditoría Lighthouse',
-      email: `lh.${Date.now()}@facilito.test`,
-      password: 'Facilito!Seguro2026',
-      razonSocial: 'Colmado Lighthouse',
-      rnc: String(100000000 + Math.floor(Math.random() * 899999999)),
-      vertical: 'colmado',
-      recordarme: true,
-    },
-  });
-  if (res.status() !== 201) throw new Error(`register failed: ${res.status()} ${await res.text()}`);
+  const secret = process.env.E2E_ADMIN_TOTP_SECRET ?? (await enrolAdminTotp(BASE));
+  const inv = await approvedInvitation(BASE, await adminToken(BASE, secret), 'lighthouse');
+  const res = await page.request.post(`${BASE}/api/v1/auth/invitations/accept`, { data: { token: inv.invitation, password: OWNER_PASSWORD, recordarme: true } });
+  if (res.status() !== 200) throw new Error(`invitation accept failed: ${res.status()} ${await res.text()}`);
   await page.goto(`${BASE}/inicio`);
   await page.waitForSelector('main#main');
   await browser.close();
 
   const win = process.platform === 'win32';
-  for (const route of ['/inicio', '/inventario', '/facturacion/nueva']) {
+  for (const route of ['/inicio', '/inventario', '/facturacion/nueva', '/suscripcion']) {
     for (const preset of ['mobile', 'desktop']) {
       const file = path.join(OUT, `authed-${preset}-${route.replace(/[^a-z]/gi, '_')}.json`);
       const args = ['dlx', 'lighthouse@12', `${BASE}${route}`, `--port=${PORT}`, '--quiet', '--output=json', `--output-path=${file}`, '--only-categories=performance,accessibility,best-practices', '--disable-storage-reset', '--max-wait-for-load=30000'];

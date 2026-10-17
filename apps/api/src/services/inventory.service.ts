@@ -239,6 +239,32 @@ function checkVertical(vertical?: string, attrs?: Record<string, unknown>): void
   if (!r.ok) throw new AppError(400, 'Atributos inválidos', 'Revisa los datos del producto para este rubro.', 'validation');
 }
 
+/**
+ * Discontinued products do not count, so a business at its limit can free slots without deleting history.
+ * Businesses created before subscriptions existed have no row and keep no limit.
+ */
+async function assertProductQuota(q: Queryable, tenantId: string): Promise<void> {
+  await q.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`product-quota:${tenantId}`]);
+  const plan = await q.query<{ nombre: string; max_productos: number | null }>(
+    `SELECT p.nombre, p.max_productos FROM billing.suscripcion s JOIN billing.plan p ON p.id = s.plan_id WHERE s.tenant_id = $1`,
+    [tenantId],
+  );
+  const max = plan.rows[0]?.max_productos;
+  if (max == null) return;
+  const used = await q.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM app.producto WHERE tenant_id = $1 AND estado <> 'descontinuado'`,
+    [tenantId],
+  );
+  if (Number(used.rows[0]?.n ?? 0) >= max) {
+    throw new AppError(
+      409,
+      'Límite del plan',
+      `Tu plan ${plan.rows[0]!.nombre} permite hasta ${max.toLocaleString('es-DO')} productos. Marca como descontinuados los que ya no vendes o cambia de plan.`,
+      'plan_limit_products',
+    );
+  }
+}
+
 export async function createProductTx(
   q: Queryable,
   tenantId: string,
@@ -248,6 +274,7 @@ export async function createProductTx(
   assertPriceRule(data.costo, data.precioVenta, data.confirmarPrecioBajoCosto);
   assertStockBounds(data.stockMin, data.stockMax);
   checkVertical(data.vertical, data.verticalAttrs);
+  if (data.estado !== 'descontinuado') await assertProductQuota(q, tenantId);
   await assertSupplier(q, tenantId, data.proveedorId);
   const sku = data.sku ? data.sku : await generateSku(q, tenantId, data.categoria);
   await assertUnique(q, tenantId, 'sku', sku);
@@ -328,6 +355,9 @@ export async function updateProduct(tenantId: string, authorId: string, id: stri
     assertStockBounds(stockMin, stockMax);
     checkVertical(data.vertical, data.verticalAttrs);
     if (data.proveedorId !== undefined) await assertSupplier(q, tenantId, data.proveedorId);
+    if (before.estado === 'descontinuado' && data.estado !== undefined && data.estado !== 'descontinuado') {
+      await assertProductQuota(q, tenantId);
+    }
     if (data.sku && data.sku !== before.sku) await assertUnique(q, tenantId, 'sku', data.sku, id);
     if (data.codigoBarras !== undefined && data.codigoBarras !== before.barcode) {
       await assertUnique(q, tenantId, 'barcode', data.codigoBarras, id);

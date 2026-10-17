@@ -12,6 +12,9 @@ import { invoiceRoutes } from './routes/invoice.routes.js';
 import { businessRoutes } from './routes/business.routes.js';
 import { legacyRoutes } from './routes/legacy.routes.js';
 import { platformRoutes } from './routes/platform.routes.js';
+import { billingRoutes } from './routes/billing.routes.js';
+import { withAuthBootstrap } from './db/client.js';
+import { cacheBackend } from './utils/cache.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const env = getEnv();
@@ -44,8 +47,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       else cb(null, false);
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'PUT'],
-    allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-facilito-csrf'],
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
+    allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-facilito-csrf', 'x-solicitud-token'],
     maxAge: 600,
   });
 
@@ -69,6 +72,16 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   app.get('/health', async () => ({ status: 'ok', service: 'facilito-api' }));
+  app.get('/health/ready', async (_req, reply) => {
+    reply.header('cache-control', 'no-store');
+    const started = Date.now();
+    const db = await withAuthBootstrap((q) => q.query('SELECT 1'))
+      .then(() => 'ok' as const)
+      .catch(() => 'error' as const);
+    const body = { status: db === 'ok' ? 'ok' : 'degraded', db, cache: await cacheBackend(), latencyMs: Date.now() - started };
+    reply.status(db === 'ok' ? 200 : 503);
+    return body;
+  });
 
   await app.register(authRoutes);
   await app.register(inventoryRoutes);
@@ -76,6 +89,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(businessRoutes);
   await app.register(legacyRoutes);
   await app.register(platformRoutes);
+  await app.register(billingRoutes);
 
   return app;
 }

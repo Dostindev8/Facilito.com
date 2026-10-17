@@ -565,6 +565,10 @@ export function invoiceReportCsv(report: Awaited<ReturnType<typeof invoiceReport
   );
 }
 
+export async function businessName(tenantId: string): Promise<string> {
+  return (await withTenant(tenantId, (q) => loadBusiness(q, tenantId))).nombreComercial;
+}
+
 export async function whatsappLink(tenantId: string, id: string, phoneInput: unknown) {
   const { telefono } = z
     .object({ telefono: z.string().transform((s) => s.replace(/\D/g, '')).pipe(z.string().regex(/^\d{10,15}$/, 'Teléfono inválido')) })

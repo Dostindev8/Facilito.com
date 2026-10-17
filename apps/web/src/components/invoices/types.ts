@@ -44,6 +44,8 @@ export interface InvoiceLine {
 export interface InvoiceDetail extends InvoiceHeader {
   lineas: InvoiceLine[];
   duplicate?: boolean;
+  /** False until the server has an SMTP provider; the UI hides the send-by-email action meanwhile. */
+  emailDisponible?: boolean;
 }
 
 export interface BusinessSettings {

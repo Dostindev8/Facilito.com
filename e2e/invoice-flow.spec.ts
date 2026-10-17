@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { addProductToInvoice, createProductViaUi, gotoAuthed, registerSession, stockCell } from './helpers';
+import { addProductToInvoice, createProductViaUi, gotoAuthed, ownerSession, stockCell } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
 test('crear producto → facturar → verificar stock → anular → verificar restauración', async ({ page }) => {
-  await registerSession(page, 'flujo');
+  await ownerSession(page, 'flujo');
   const nombre = `Arroz E2E ${Date.now() % 100000}`;
 
   await createProductViaUi(page, { nombre, costo: '180', precio: '250', stock: '10' });
@@ -34,7 +34,7 @@ test('crear producto → facturar → verificar stock → anular → verificar r
 });
 
 test('falla de red al emitir: el reintento no duplica la factura ni el descuento de stock', async ({ page }) => {
-  await registerSession(page, 'red');
+  await ownerSession(page, 'red');
   const nombre = `Aceite E2E ${Date.now() % 100000}`;
   await createProductViaUi(page, { nombre, costo: '150', precio: '200', stock: '5' });
 
@@ -64,7 +64,7 @@ test('falla de red al emitir: el reintento no duplica la factura ni el descuento
 });
 
 test('no deja vender más del stock disponible', async ({ page }) => {
-  await registerSession(page, 'stock');
+  await ownerSession(page, 'stock');
   const nombre = `Leche E2E ${Date.now() % 100000}`;
   await createProductViaUi(page, { nombre, costo: '50', precio: '75', stock: '2' });
   await gotoAuthed(page, '/facturacion/nueva');

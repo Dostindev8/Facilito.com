@@ -12,6 +12,26 @@ export interface SessionUser {
   negocio: string;
   businesses: Array<{ tenantId: string; rol: Role; razonSocial: string }>;
   platformAdmin?: boolean;
+  /** True only when this session was opened with a TOTP code. Platform routes require it. */
+  mfa?: boolean;
+  suscripcion?: SubscriptionSummary | null;
+}
+
+export type SubscriptionState =
+  | 'PENDIENTE_PAGO'
+  | 'PENDIENTE_AUTORIZACION'
+  | 'ACTIVA'
+  | 'EN_GRACIA'
+  | 'SUSPENDIDA'
+  | 'CANCELADA'
+  | 'RECHAZADA';
+
+export interface SubscriptionSummary {
+  estado: SubscriptionState;
+  plan: string;
+  periodoFin: string | null;
+  cancelarAlFinal: boolean;
+  soloLectura: boolean;
 }
 
 export interface FieldError {
@@ -87,12 +107,36 @@ async function toApiError(res: Response): Promise<ApiError> {
 const NETWORK_ERROR = () =>
   new ApiError(0, 'Sin conexión', 'No pudimos conectar con el servidor. Revisa tu internet e intenta de nuevo.', 'network');
 
+const TIMEOUT_ERROR = () =>
+  new ApiError(0, 'El servidor tardó demasiado', 'La solicitud tardó más de lo normal. Revisa tu conexión e intenta de nuevo.', 'timeout');
+
+/** Without a deadline a hung request leaves screens on "Cargando…" forever. Uploads get more time. */
+const REQUEST_TIMEOUT_MS = 25_000;
+const UPLOAD_TIMEOUT_MS = 90_000;
+
 async function rawFetch(url: string, init: RequestInit): Promise<Response> {
+  // Manual controller: AbortSignal.any/timeout are missing on iOS Safari < 17.4.
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, init.body instanceof FormData ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
+  const outer = init.signal;
+  const forward = () => ctrl.abort();
+  if (outer) {
+    if (outer.aborted) ctrl.abort();
+    else outer.addEventListener('abort', forward, { once: true });
+  }
   try {
-    return await fetch(url, { credentials: 'same-origin', cache: 'no-store', ...init });
+    return await fetch(url, { credentials: 'same-origin', cache: 'no-store', ...init, signal: ctrl.signal });
   } catch (e) {
+    if (timedOut) throw TIMEOUT_ERROR();
     if (e instanceof DOMException && e.name === 'AbortError') throw e;
     throw NETWORK_ERROR();
+  } finally {
+    clearTimeout(timer);
+    outer?.removeEventListener('abort', forward);
   }
 }
 
@@ -188,7 +232,7 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** Public auth endpoints (login/register) that set the refresh cookie. */
+/** Public auth endpoints (login, invitation acceptance) that set the refresh cookie. */
 export async function authRequest(path: string, body: unknown): Promise<SessionUser> {
   const res = await rawFetch(`/api/v1/auth/${path}`, {
     method: 'POST',
@@ -211,8 +255,15 @@ export async function publicPost<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function publicGet<T>(path: string): Promise<T> {
-  const res = await rawFetch(`/api${path}`, { method: 'GET' });
+export async function publicGet<T>(path: string, headers?: Record<string, string>): Promise<T> {
+  const res = await rawFetch(`/api${path}`, { method: 'GET', headers });
+  if (!res.ok) throw await toApiError(res);
+  return (await res.json()) as T;
+}
+
+/** Unauthenticated multipart upload (checkout receipt proves possession with a request token header). */
+export async function publicUpload<T>(path: string, form: FormData, headers?: Record<string, string>): Promise<T> {
+  const res = await rawFetch(`/api${path}`, { method: 'POST', headers, body: form });
   if (!res.ok) throw await toApiError(res);
   return (await res.json()) as T;
 }

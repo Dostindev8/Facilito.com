@@ -7,6 +7,9 @@ import { uuidParam } from '../http/validators.js';
 import { sendFile } from '../http/files.js';
 import * as invoices from '../services/invoice.service.js';
 import { renderInvoicePdf, renderReportPdf } from '../services/invoice-pdf.js';
+import { emailProviderConfigured, MailDeliveryError, sendInvoiceEmail } from '../services/mailer.js';
+import { emailField } from '../services/auth.service.js';
+import { getEnv } from '../config/env.js';
 
 const ROLES_REPORTS: readonly RoleCode[] = ['owner', 'manager', 'accountant'];
 
@@ -22,7 +25,7 @@ export async function invoiceRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/v1/invoices/:id', async (req) => {
     const a = await requireAuth(req);
-    return invoices.getInvoice(a.tenantId, uuidParam.parse(req.params).id);
+    return { ...(await invoices.getInvoice(a.tenantId, uuidParam.parse(req.params).id)), emailDisponible: emailProviderConfigured() };
   });
 
   app.post('/v1/invoices/:id/void', async (req) => {
@@ -47,14 +50,29 @@ export async function invoiceRoutes(app: FastifyInstance): Promise<void> {
     return invoices.whatsappLink(a.tenantId, uuidParam.parse(req.params).id, req.body);
   });
 
-  app.post('/v1/invoices/:id/email', async (req) => {
-    await requireRole(req, ROLES_SELL);
-    throw new AppError(
-      501,
-      'Email no configurado',
-      'El envío por email se habilitará cuando se configure un proveedor de correo. Descarga el PDF o envíalo por WhatsApp.',
-      'email_provider_not_configured',
-    );
+  app.post('/v1/invoices/:id/email', { config: { rateLimit: { max: 10, timeWindow: getEnv().RATE_LIMIT_WINDOW_MS } } }, async (req) => {
+    const a = await requireRole(req, ROLES_SELL);
+    if (!emailProviderConfigured()) {
+      throw new AppError(
+        503,
+        'Correo no disponible',
+        'El envío por correo no está activo todavía. Descarga el PDF o envíalo por WhatsApp.',
+        'email_provider_not_configured',
+      );
+    }
+    const id = uuidParam.parse(req.params).id;
+    const { email } = z.object({ email: emailField }).strict().parse(req.body ?? {});
+    const inv = await invoices.getInvoice(a.tenantId, id);
+    if (inv.estado === 'anulada') throw new AppError(409, 'Factura anulada', 'Una factura anulada no se envía al cliente.', 'invoice_voided');
+    const [pdf, negocio] = await Promise.all([renderInvoicePdf(a.tenantId, id), invoices.businessName(a.tenantId)]);
+    const total = `RD$ ${Number(inv.total).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    try {
+      await sendInvoiceEmail(email, negocio, inv.numeroLabel, total, pdf);
+    } catch (err) {
+      if (!(err instanceof MailDeliveryError)) throw err;
+      throw new AppError(502, 'No se pudo enviar', 'El servidor de correo no respondió. Intenta de nuevo en unos minutos.', 'email_delivery_failed');
+    }
+    return { enviado: true, email };
   });
 
   app.get('/v1/reports/invoices', async (req, reply) => {

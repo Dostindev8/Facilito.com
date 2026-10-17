@@ -304,7 +304,9 @@ describe('listado, PDF, reportes y envío', () => {
     const wa = await api(app, owner).post(`/v1/invoices/${f.id}/whatsapp`, { telefono: '(809) 555-0101' });
     expect(wa.json().url).toMatch(/^https:\/\/wa\.me\/18095550101\?text=/);
     expect((await api(app, owner).post(`/v1/invoices/${f.id}/whatsapp`, { telefono: 'abc' })).statusCode).toBe(400);
-    const mail = await api(app, owner).post(`/v1/invoices/${f.id}/email`, {});
-    expect(mail.statusCode).toBe(501);
+    expect((await api(app, owner).get(`/v1/invoices/${f.id}`)).json().emailDisponible).toBe(false);
+    const mail = await api(app, owner).post(`/v1/invoices/${f.id}/email`, { email: 'cliente@example.com' });
+    expect(mail.statusCode).toBe(503);
+    expect(mail.json().code).toBe('email_provider_not_configured');
   });
 });

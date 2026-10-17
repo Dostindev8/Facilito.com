@@ -28,6 +28,8 @@ export default function InvoiceDetailPage() {
   const [payOpen, setPayOpen] = useState(false);
   const [waOpen, setWaOpen] = useState(false);
   const [phone, setPhone] = useState('');
+  const [mailOpen, setMailOpen] = useState(false);
+  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -101,10 +103,21 @@ export default function InvoiceDetailPage() {
   };
 
   const doEmail = async () => {
+    const to = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      setFormError('Escribe un correo válido (ej. cliente@correo.com).');
+      return;
+    }
+    setFormError(null);
+    setBusy(true);
     try {
-      await api(`/v1/invoices/${inv.id}/email`, { method: 'POST', body: {} });
+      const res = await api<{ email: string }>(`/v1/invoices/${inv.id}/email`, { method: 'POST', body: { email: to } });
+      setMailOpen(false);
+      toast.success('Factura enviada', `Se envió a ${res.email} con el PDF adjunto.`);
     } catch (e) {
-      toast.info('Email no disponible', errorMessage(e));
+      setFormError(errorMessage(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -160,9 +173,18 @@ export default function InvoiceDetailPage() {
               >
                 <MessageCircle size={18} /> WhatsApp
               </button>
-              <button type="button" className="btn btn-outline" onClick={doEmail}>
-                <Mail size={18} /> Email
-              </button>
+              {inv.emailDisponible && (
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => {
+                    setFormError(null);
+                    setMailOpen(true);
+                  }}
+                >
+                  <Mail size={18} /> Correo
+                </button>
+              )}
             </>
           )}
           {cobrable && can(ROLES.sell) && (
@@ -369,6 +391,33 @@ export default function InvoiceDetailPage() {
           <p className="muted" style={{ fontSize: '0.85rem' }}>
             Consejo: descarga el PDF y adjúntalo en el chat para que tu cliente tenga la factura completa.
           </p>
+        </div>
+      </Modal>
+
+      <Modal
+        open={mailOpen}
+        onClose={() => setMailOpen(false)}
+        size="sm"
+        title="Enviar por correo"
+        subtitle="Tu cliente recibirá la factura en PDF como archivo adjunto."
+        footer={
+          <>
+            <button type="button" className="btn btn-ghost" onClick={() => setMailOpen(false)} disabled={busy}>
+              Cancelar
+            </button>
+            <button type="button" className="btn btn-primary" onClick={doEmail} disabled={busy}>
+              {busy ? <Spinner size={16} /> : <Mail size={16} />} Enviar factura
+            </button>
+          </>
+        }
+      >
+        <div className="stack">
+          {formError && (
+            <div className="form-alert" role="alert">
+              <TriangleAlert size={18} /> <span>{formError}</span>
+            </div>
+          )}
+          <TextInput label="Correo del cliente" type="email" inputMode="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} placeholder="cliente@correo.com" />
         </div>
       </Modal>
     </>
