@@ -735,6 +735,7 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow-x: clip;
 }
 
 .public-top {
@@ -744,9 +745,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px;
+  min-width: 0;
   height: calc(var(--header-h) + env(safe-area-inset-top));
-  padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+  padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
   background: rgb(255 255 255 / 0.92);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid rgb(21 35 58 / 0.08);
@@ -755,13 +757,18 @@
 .public-top-brand {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   text-decoration: none;
+  flex-shrink: 0;
 }
 
 .public-top-nav {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .public-top-nav a:not(.btn) {
@@ -777,9 +784,41 @@
   background: var(--green-50);
 }
 
+.public-top-nav .btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .public-main {
   flex: 1;
+  /* Sticky header already occupies flow; do not add the old fixed-header offset. */
   padding-top: 8px;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+@media (max-width: 479px) {
+  .public-top-brand .logo-text {
+    display: none;
+  }
+
+  .public-top-nav a:not(.btn) {
+    display: none;
+  }
+
+  .public-top-nav .btn {
+    padding-inline: 12px;
+    font-size: 0.9rem;
+  }
+
+  .public-app .checkout-steps {
+    gap: 2px;
+  }
+
+  .public-app .checkout-steps li {
+    font-size: 0.65rem;
+    min-width: 0;
+  }
 }
 
 .public-foot {

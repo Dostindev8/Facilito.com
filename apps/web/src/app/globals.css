@@ -3623,8 +3623,19 @@ textarea.input {
 }
 
 @media (max-width: 640px) {
+  .checkout-steps {
+    gap: 4px;
+  }
+
   .checkout-steps li {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+  }
+
+  .checkout-steps li > span {
+    width: 28px;
+    height: 28px;
   }
 
   .bank-row {
