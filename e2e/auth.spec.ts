@@ -113,6 +113,41 @@ test.describe('catálogo de planes y banner de estado', () => {
     await expect(page.locator('.form-alert.warn[role="alert"]')).toHaveCount(0);
   });
 
+  test('enlace ?s=id.token restaura la solicitud sin depender de localStorage', async ({ page }) => {
+    await page.addInitScript(() => {
+      try {
+        localStorage.removeItem('facilito:solicitud');
+      } catch {
+        /* ignore */
+      }
+    });
+    // Fake id/token shape — API will 404; UI must attempt status view (not "no hay solicitud guardada").
+    await page.route('**/api/v1/billing/checkout/**', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            estado: 'PENDIENTE_PAGO',
+            plan: 'Profesional',
+            montoCentavos: 149000,
+            moneda: 'DOP',
+            motivo: null,
+            comprobantes: 0,
+            creada: new Date().toISOString(),
+            instrucciones: null,
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+    await page.goto('/suscribirme?ver=estado&s=00000000-0000-4000-8000-000000000001.tokensecretvalue12');
+    await expect(page.getByRole('status').filter({ hasText: 'no tiene una solicitud guardada' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /Falta tu comprobante/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Plan\s+Profesional/i)).toBeVisible();
+  });
+
   test('si fallan los planes, el catálogo local mantiene la UI y el banner ver=estado', async ({ page }) => {
     await page.route('**/api/v1/billing/plans', (r) =>
       r.fulfill({

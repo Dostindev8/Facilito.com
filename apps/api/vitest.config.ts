@@ -25,6 +25,8 @@ export default defineConfig({
       UPLOAD_DIR: './.data/test-uploads',
       AUTH_RATE_LIMIT_MAX: '1000',
       RATE_LIMIT_MAX: '10000',
+      // Pin allowlist so a pulled Production .env cannot flake CORS tests locally.
+      CORS_ORIGINS: 'http://localhost:3000',
     },
   },
 });

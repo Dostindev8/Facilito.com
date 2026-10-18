@@ -133,12 +133,19 @@ async function fetchPlansWithBackoff(): Promise<PlansPayload> {
   throw last;
 }
 
+function parseSavedRef(raw: string | null): Saved | null {
+  if (!raw) return null;
+  const [id, token] = raw.split('.');
+  return id && token ? { id, token } : null;
+}
+
+/** Prefer query `?s=` (survives email clients); keep `#s=` for links already shared. */
 function readSaved(): Saved | null {
-  const hash = new URLSearchParams(window.location.hash.slice(1)).get('s');
-  if (hash) {
-    const [id, token] = hash.split('.');
-    if (id && token) return { id, token };
-  }
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = parseSavedRef(params.get('s'));
+  if (fromQuery) return fromQuery;
+  const fromHash = parseSavedRef(new URLSearchParams(window.location.hash.slice(1)).get('s'));
+  if (fromHash) return fromHash;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     const v = raw ? (JSON.parse(raw) as Partial<Saved>) : null;
@@ -157,7 +164,8 @@ function save(s: Saved | null) {
   }
 }
 
-const statusLink = (s: Saved) => `${window.location.origin}/suscribirme?ver=estado#s=${s.id}.${s.token}`;
+const statusLink = (s: Saved) =>
+  `${window.location.origin}/suscribirme?ver=estado&s=${encodeURIComponent(`${s.id}.${s.token}`)}`;
 
 const STEPS = ['Plan', 'Tus datos', 'Pago', 'Aprobación'] as const;
 
@@ -245,7 +253,8 @@ export function SubscribeFlow() {
             save(s);
             setSaved(s);
             setCheckout(c);
-            window.history.replaceState(null, '', '/suscribirme?ver=estado');
+            // Query param (not hash): email clients strip fragments and break status links.
+            window.history.replaceState(null, '', `/suscribirme?ver=estado&s=${encodeURIComponent(`${s.id}.${s.token}`)}`);
           }}
         />
       )}
