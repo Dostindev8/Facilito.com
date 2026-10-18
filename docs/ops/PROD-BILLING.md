@@ -32,9 +32,11 @@ Esperado: HTTP 200 y `items` con `inicial`, `profesional`, `negocio`.
 La API en `DATABASE_DRIVER=pg` **no** auto-migra en cada request; hay que aplicar migraciones con el rol migrator.
 
 1. Confirmar backup / punto de restauración Neon (ver `BACKUP-DR.md`).
-2. Con `DATABASE_ADMIN_URL` (o el URL de migraciones del proyecto) en el entorno local seguro:
+2. Con `DATABASE_ADMIN_URL` en el entorno local seguro (si no existe, usar el connection string **unpooled/owner** de Neon, p. ej. el valor de `DATABASE_URL_UNPOOLED` / `POSTGRES_URL_NON_POOLING` — nunca lo subas a git). Recomendado: guardar `DATABASE_ADMIN_URL` solo en Vercel Production del API para ops futuras (no en Preview).
 
 ```bash
+# PowerShell ejemplo (tras `vercel env pull` al API, sin imprimir secretos):
+# $env:DATABASE_ADMIN_URL = $env:DATABASE_URL_UNPOOLED
 pnpm --filter @facilito/api migrate
 ```
 

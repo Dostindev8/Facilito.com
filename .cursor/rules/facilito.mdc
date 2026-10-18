@@ -1,0 +1,15 @@
+---
+description: Facilito monorepo — convenciones, fuentes de verdad, ops y EXTEND-NEVER-OVERWRITE
+alwaysApply: true
+---
+
+# Facilito — reglas de agente
+
+1. Leer `AGENTS.md` y `docs/audit/STATUS-AREAS.md` antes de cambios grandes.
+2. Planes/precios/trust → `packages/domain/src/plans.ts` (única fuente). Tipos → `business-types.ts`. RNC → `rnc.ts`.
+3. En web: `@facilito/domain/plans` (subpath), no barrel `@facilito/domain`.
+4. No inventar sellos, certificaciones ni datos bancarios. `TRUST_BADGES` vacío hasta datos reales.
+5. No commitear `apps/mobile/tsconfig.json` ni `.env*`.
+6. Prod: web `facilitord.vercel.app` · API `api-facilito.vercel.app`. Billing ops: `docs/ops/PROD-BILLING.md`.
+7. GOD-STACK-ING: preferir DIGEST v8.3 + `facilito-ops.md` / `agent-toolkit.md` del skill personal.
+8. Commit/push/deploy solo con pedido explícito del usuario (salvo ship inequívoco).

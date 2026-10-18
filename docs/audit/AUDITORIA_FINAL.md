@@ -26,7 +26,9 @@ Fecha: 17 oct 2026 · Rama `feat/intro-login-planes`.
 | elegir plan actualiza resumen | ✅ | E2E plan-summary-bar |
 | tipos con búsqueda y Otro | ✅ | E2E BusinessTypePicker |
 | sin certificaciones inventadas | ✅ | `TRUST_BADGES = []` |
-| prod planes API | ⚠️ | 503 hasta migrate Neon (`docs/ops/PROD-BILLING.md`); UI usa fallback de catálogo |
+| prod planes API | ✅ | Neon 009+010 aplicadas (18 oct 2026); `GET /v1/billing/plans` → 200 |
+| Lighthouse LCP/CLS | ⚠️/✅ | login LCP 2.8s / CLS 0; suscribirme LCP 2.3s / CLS 0 (mobile) |
+| transferencia banco | 🔒 | `metodos.transferencia=false` hasta `BILLING_BANK_*` en Vercel |
 
 ## Accesibilidad / seguridad
 
