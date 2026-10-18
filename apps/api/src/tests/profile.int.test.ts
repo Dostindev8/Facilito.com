@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { withTenant } from '../db/client.js';
-import { addStaff, api, bootApp, createProduct, PASSWORD, register, shutdown, type Session } from './helpers.js';
+import { addStaff, api, bootApp, createProduct, nextTestRnc, PASSWORD, register, shutdown, type Session } from './helpers.js';
 
 const sent = vi.hoisted(() => ({
   emailChange: [] as Array<{ to: string; token: string }>,
@@ -34,7 +34,6 @@ vi.mock('../services/mailer.js', () => {
 });
 
 let app: FastifyInstance;
-let rncSeq = 400_000_000;
 
 beforeAll(async () => {
   app = await bootApp();
@@ -83,7 +82,7 @@ describe('Configuración → Negocio (flujo cargar → editar → guardar → pe
     const before = (await api(app, s).get('/v1/settings')).json();
     expect(before.tipoNegocio).toBe('Colmado');
 
-    const newRnc = String(rncSeq++);
+    const newRnc = nextTestRnc();
     const res = await api(app, s).patch('/v1/settings', {
       razonSocial: 'Colmado La Esquina SRL',
       nombreComercial: 'Colmado La Esquina',
@@ -119,7 +118,7 @@ describe('Configuración → Negocio (flujo cargar → editar → guardar → pe
     const f = await api(app, s).post('/v1/invoices', { clientUuid: randomUUID(), metodoPago: 'efectivo', ncfTipo: 'B02', lineas: [{ productoId: p.id, cantidad: '1' }] });
     expect(f.json().ncf).toBe('B0200000001');
 
-    const newRnc = String(rncSeq++);
+    const newRnc = nextTestRnc();
     const blocked = await api(app, s).patch('/v1/settings', { rnc: newRnc });
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json().code).toBe('rnc_confirm_required');
@@ -131,7 +130,7 @@ describe('Configuración → Negocio (flujo cargar → editar → guardar → pe
   });
 
   it('no permite tomar el RNC de otro negocio', async () => {
-    const taken = String(rncSeq++);
+    const taken = nextTestRnc();
     await register(app, { rnc: taken });
     const s = await register(app);
     const res = await api(app, s).patch('/v1/settings', { rnc: taken });
@@ -143,7 +142,7 @@ describe('Configuración → Negocio (flujo cargar → editar → guardar → pe
     const s = await register(app);
     const manager = await addStaff(app, s.tenantId, 'manager');
     expect((await api(app, manager).patch('/v1/settings', { tipoNegocio: 'Minimarket' })).statusCode).toBe(200);
-    expect((await api(app, manager).patch('/v1/settings', { rnc: String(rncSeq++) })).statusCode).toBe(403);
+    expect((await api(app, manager).patch('/v1/settings', { rnc: nextTestRnc() })).statusCode).toBe(403);
     const cashier = await addStaff(app, s.tenantId, 'cashier');
     expect((await api(app, cashier).patch('/v1/settings', { tipoNegocio: 'Otro rubro' })).statusCode).toBe(403);
   });

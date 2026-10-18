@@ -3684,3 +3684,333 @@ textarea.input {
     transition: none;
   }
 }
+
+/* ───────────── Login cinematic intro (4.0s) ───────────── */
+.login-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  animation: login-intro-fade-in 0.4s ease-out both;
+}
+
+.login-intro.leaving {
+  animation: login-intro-fade-out 0.6s ease-in both;
+}
+
+.login-intro-bg {
+  position: absolute;
+  inset: 0;
+}
+
+.login-intro-bg-img {
+  object-fit: cover;
+  object-position: 50% 70%;
+  transform: scale(1.04);
+  animation: login-intro-bg-settle 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.login-intro-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(26, 43, 60, 0.35) 0%, rgba(0, 166, 81, 0.18) 55%, rgba(26, 43, 60, 0.45) 100%);
+}
+
+.login-intro-center {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  width: min(100%, 420px);
+}
+
+.login-intro-logo {
+  width: clamp(140px, 22vw, 220px);
+  height: clamp(140px, 22vw, 220px);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: translateY(12px);
+  animation: login-intro-logo-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.4s forwards;
+}
+
+.login-intro-logo .logo-mark,
+.login-intro-logo img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  object-fit: contain;
+}
+
+.login-intro-bar {
+  width: min(240px, 70vw);
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.35);
+  overflow: hidden;
+}
+
+.login-intro-bar > span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0.02);
+  background: linear-gradient(90deg, #00a651 0%, #f5a623 100%);
+  will-change: transform;
+}
+
+.login-intro-copy {
+  text-align: center;
+  color: #fff;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.login-intro-copy.on {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.login-intro-title {
+  margin: 0;
+  font-size: clamp(1.35rem, 3vw, 1.75rem);
+  font-weight: 700;
+}
+
+.login-intro-tag {
+  margin: 6px 0 0;
+  font-size: 0.95rem;
+  opacity: 0.92;
+}
+
+.login-intro-skip {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 2;
+  border: 0;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.login-intro-skip:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.login-panel-enter {
+  animation: login-panel-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-intro.reduced .login-intro-logo,
+.login-intro.reduced .login-intro-bg-img {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes login-intro-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes login-intro-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes login-intro-bg-settle {
+  to {
+    transform: scale(1);
+  }
+}
+@keyframes login-intro-logo-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes login-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-intro,
+  .login-intro-logo,
+  .login-intro-bg-img,
+  .login-panel-enter {
+    animation: none !important;
+  }
+  .login-intro-copy {
+    transition: opacity 0.2s ease;
+  }
+}
+
+/* Plan extras + business type groups */
+.plan-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 16px 0 8px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(0, 166, 81, 0.08), rgba(26, 43, 60, 0.04));
+  border: 1px solid rgba(0, 166, 81, 0.2);
+}
+
+.plan-summary-bar strong {
+  display: block;
+  color: #1a2b3c;
+}
+
+.plan-summary-bar ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.plan-section {
+  margin-top: 40px;
+}
+
+.plan-section h2 {
+  margin: 0 0 6px;
+  font-size: 1.35rem;
+  color: #1a2b3c;
+}
+
+.plan-section-lead {
+  margin: 0 0 18px;
+  color: var(--muted);
+}
+
+.plan-benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.plan-benefits-grid article {
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(26, 43, 60, 0.08);
+  background: #fff;
+}
+
+.plan-benefits-grid article.featured {
+  border-color: #00a651;
+  box-shadow: 0 0 0 1px rgba(0, 166, 81, 0.25);
+}
+
+.plan-benefits-grid ul {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.plan-benefits-grid li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 0.92rem;
+}
+
+.plan-benefits-price {
+  margin: 4px 0 0;
+  font-weight: 700;
+  color: #00a651;
+}
+
+.plan-compare-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.plan-compare {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 520px;
+  font-size: 0.92rem;
+}
+
+.plan-compare th,
+.plan-compare td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(26, 43, 60, 0.08);
+  text-align: left;
+}
+
+.plan-compare thead th {
+  color: #1a2b3c;
+  font-weight: 700;
+}
+
+.plan-trust-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.plan-trust-list li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.plan-conditions {
+  margin: 16px 0 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.business-type-list {
+  max-height: 280px;
+}
+
+.business-type-group-label {
+  padding: 8px 12px 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.business-type-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.business-type-picker + .field {
+  margin-top: 12px;
+}

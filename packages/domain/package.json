@@ -17,6 +17,18 @@
     "./business-profile": {
       "types": "./dist/business-profile.d.ts",
       "import": "./dist/business-profile.js"
+    },
+    "./plans": {
+      "types": "./dist/plans.d.ts",
+      "import": "./dist/plans.js"
+    },
+    "./business-types": {
+      "types": "./dist/business-types.d.ts",
+      "import": "./dist/business-types.js"
+    },
+    "./rnc": {
+      "types": "./dist/rnc.d.ts",
+      "import": "./dist/rnc.js"
     }
   },
   "scripts": {

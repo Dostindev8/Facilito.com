@@ -1,14 +1,39 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { ArrowLeft, ArrowRight, CircleCheck, Clock, Copy, MailCheck, RefreshCw, Send, TriangleAlert } from 'lucide-react';
+import { businessTypeError } from '@facilito/domain/business-profile';
+import { OTHER_BUSINESS_TYPE_SLUG } from '@facilito/domain/business-types';
+import { validateRdPhone, validateRncOrCedula } from '@facilito/domain/rnc';
 import { ApiError, errorMessage, publicGet, publicPost, publicUpload, type SubscriptionState } from '@/lib/api';
 import { BankCard, dop, ReceiptPicker, StateBadge, type BankInstructions } from '@/components/billing/billing-ui';
-import { BusinessTypeField } from '@/components/ui/business-fields';
+import { PlanBenefits, PlanComparison, PlanSummaryBar, PlanTrust } from '@/components/billing/plan-extras';
+import { BusinessTypePicker, tipoNegocioFromPicker, type BusinessTypeValue } from '@/components/ui/business-type-picker';
 import { Skeleton, Spinner, TextInput, fieldErrorMap } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
+import { catalogAsApiItems, enrichPlan, getPlan } from '@/lib/plans';
 import { site } from '@/lib/site';
+
+type ApplicantForm = {
+  nombre: string;
+  email: string;
+  telefono: string;
+  razonSocial: string;
+  rnc: string;
+  businessType: BusinessTypeValue;
+  terminos: boolean;
+};
+
+const emptyApplicant = (): ApplicantForm => ({
+  nombre: '',
+  email: '',
+  telefono: '',
+  razonSocial: '',
+  rnc: '',
+  businessType: { businessTypeSlug: '', businessTypeCustom: '' },
+  terminos: false,
+});
 
 interface PlanOption {
   id: string;
@@ -155,6 +180,7 @@ export function SubscribeFlow() {
   const [plan, setPlan] = useState<string | null>(null);
   const [step, setStep] = useState<'plan' | 'datos'>('plan');
   const [missing, setMissing] = useState(false);
+  const [applicant, setApplicant] = useState<ApplicantForm>(emptyApplicant);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -191,9 +217,12 @@ export function SubscribeFlow() {
   }
   if (saved) return <StatusView saved={saved} onStartOver={startOver} />;
 
+  const catalogPlan = plan ? getPlan(plan) : undefined;
+
   return (
     <>
       <Stepper current={step === 'plan' ? 0 : 1} />
+      {catalogPlan && step === 'datos' && <PlanSummaryBar plan={catalogPlan} />}
       {step === 'plan' ? (
         <PlanStep
           selected={plan}
@@ -208,6 +237,8 @@ export function SubscribeFlow() {
       ) : (
         <DetailsStep
           planId={plan}
+          form={applicant}
+          setForm={setApplicant}
           onBack={() => setStep('plan')}
           onCreated={(c) => {
             const s = { id: c.id, token: c.token };
@@ -243,7 +274,18 @@ function usePlans() {
         setError(null);
       })
       .catch((e) => {
-        if (!cached?.items.length) setError(e);
+        // Catalog fallback keeps checkout usable when Neon billing schema is not migrated yet.
+        const fallback = { items: catalogAsApiItems(), metodos: { transferencia: true, tarjeta: false } };
+        if (cached?.items.length) {
+          setData(cached);
+          setStale(true);
+          setError(null);
+        } else {
+          setData(fallback);
+          setStale(true);
+          setError(null);
+        }
+        void e;
       })
       .finally(() => setLoading(false));
   }, []);
@@ -332,46 +374,71 @@ function PlanStep({
         </div>
       ) : null}
       <div className="mkt-prices checkout-plans">
-        {plans.data.items.map((p, i) => (
-          <article key={p.id} className={`mkt-price${selected === p.id || (!selected && i === 1) ? ' featured' : ''}`}>
-            <h2>{p.nombre}</h2>
-            <strong>
-              {dop(p.precioMensualCentavos, p.moneda)}
-              <span style={{ fontSize: '1rem', fontWeight: 600 }}> / mes</span>
-            </strong>
-            <p>{p.descripcion}</p>
-            <ul>
-              <li>Hasta {p.maxUsuarios} usuarios</li>
-              <li>{p.maxProductos ? `Hasta ${p.maxProductos.toLocaleString('es-DO')} productos` : 'Productos ilimitados'}</li>
-              {p.copilot && <li>Asistente Copilot</li>}
-            </ul>
-            <button type="button" className="btn btn-primary btn-block" onClick={() => onSelect(p.id)}>
-              Elegir {p.nombre}
-            </button>
-          </article>
-        ))}
+        {plans.data.items.map((p) => {
+          const enriched = enrichPlan(p);
+          const featured = 'destacado' in enriched ? enriched.destacado : p.id === 'profesional' || selected === p.id;
+          return (
+            <article key={p.id} className={`mkt-price${featured || selected === p.id ? ' featured' : ''}`}>
+              <h2>{p.nombre}</h2>
+              <strong>
+                {dop(p.precioMensualCentavos, p.moneda)}
+                <span style={{ fontSize: '1rem', fontWeight: 600 }}> / mes</span>
+              </strong>
+              <p>{p.descripcion}</p>
+              <ul>
+                <li>Hasta {p.maxUsuarios} usuarios</li>
+                <li>{p.maxProductos ? `Hasta ${p.maxProductos.toLocaleString('es-DO')} productos` : 'Productos ilimitados'}</li>
+                {p.copilot && <li>Asistente Copilot</li>}
+                {'soportePrioritario' in enriched && enriched.soportePrioritario && <li>Prioridad en soporte</li>}
+              </ul>
+              <button type="button" className="btn btn-primary btn-block" onClick={() => onSelect(p.id)}>
+                Elegir {p.nombre}
+              </button>
+            </article>
+          );
+        })}
       </div>
+      <PlanBenefits />
+      <PlanComparison />
+      <PlanTrust />
     </>
   );
 }
 
-function DetailsStep({ planId, onBack, onCreated }: { planId: string | null; onBack: () => void; onCreated: (c: Checkout) => void }) {
+function DetailsStep({
+  planId,
+  form,
+  setForm,
+  onBack,
+  onCreated,
+}: {
+  planId: string | null;
+  form: ApplicantForm;
+  setForm: Dispatch<SetStateAction<ApplicantForm>>;
+  onBack: () => void;
+  onCreated: (c: Checkout) => void;
+}) {
   const plans = usePlans();
-  const [form, setForm] = useState({ nombre: '', email: '', telefono: '', razonSocial: '', rnc: '', tipoNegocio: '', terminos: false });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
-  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const plan = plans.data?.items.find((p) => p.id === planId) ?? null;
+  const set = <K extends keyof ApplicantForm>(k: K, v: ApplicantForm[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const plan = plans.data?.items.find((p) => p.id === planId) ?? (planId ? catalogAsApiItems().find((p) => p.id === planId) : null) ?? null;
 
   const validate = () => {
     const e: Record<string, string> = {};
     if (form.nombre.trim().length < 2) e.nombre = 'Escribe tu nombre';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = 'Email inválido';
-    if (form.telefono.trim() && !/^[+\d][\d\s()-]{6,24}$/.test(form.telefono.trim())) e.telefono = 'Teléfono inválido';
+    const phoneErr = validateRdPhone(form.telefono);
+    if (phoneErr) e.telefono = phoneErr;
     if (form.razonSocial.trim().length < 2) e.razonSocial = 'Escribe el nombre de tu negocio';
-    if (!/^\d{9}$|^\d{11}$/.test(form.rnc.replace(/[\s-]/g, ''))) e.rnc = 'RNC de 9 dígitos o cédula de 11';
+    const rnc = validateRncOrCedula(form.rnc);
+    if (!rnc.ok) e.rnc = rnc.error;
+    if (form.businessType.businessTypeSlug === OTHER_BUSINESS_TYPE_SLUG) {
+      const te = businessTypeError(form.businessType.businessTypeCustom);
+      if (te) e.tipoNegocio = te;
+    }
     if (!form.terminos) e.aceptaTerminos = 'Debes aceptar los términos y la política de privacidad';
     return e;
   };
@@ -392,6 +459,7 @@ function DetailsStep({ planId, onBack, onCreated }: { planId: string | null; onB
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `ck-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const tipoNegocio = tipoNegocioFromPicker(form.businessType);
       const c = await publicPost<Checkout>(
         '/v1/billing/checkout',
         {
@@ -401,7 +469,7 @@ function DetailsStep({ planId, onBack, onCreated }: { planId: string | null; onB
           ...(form.telefono.trim() ? { telefono: form.telefono.trim() } : {}),
           razonSocial: form.razonSocial.trim(),
           rnc: form.rnc,
-          ...(form.tipoNegocio.trim() ? { tipoNegocio: form.tipoNegocio.trim() } : {}),
+          ...(tipoNegocio ? { tipoNegocio } : {}),
           aceptaTerminos: true,
         },
         { 'idempotency-key': idempotencyKey },
@@ -471,19 +539,17 @@ function DetailsStep({ planId, onBack, onCreated }: { planId: string | null; onB
       />
       <h2 className="checkout-h">Tu negocio</h2>
       <TextInput label="Nombre del negocio" required autoComplete="organization" maxLength={200} value={form.razonSocial} onChange={(e) => set('razonSocial', e.target.value)} error={errors.razonSocial} />
-      <div className="form-grid">
-        <TextInput
-          label="RNC o cédula"
-          required
-          inputMode="numeric"
-          maxLength={13}
-          value={form.rnc}
-          onChange={(e) => set('rnc', e.target.value.replace(/[^\d-\s]/g, ''))}
-          error={errors.rnc}
-          placeholder="1-01-00000-1"
-        />
-        <BusinessTypeField value={form.tipoNegocio} onChange={(v) => set('tipoNegocio', v)} error={errors.tipoNegocio} hint="Opcional" />
-      </div>
+      <TextInput
+        label="RNC o cédula"
+        required
+        inputMode="numeric"
+        maxLength={13}
+        value={form.rnc}
+        onChange={(e) => set('rnc', e.target.value.replace(/[^\d-\s]/g, ''))}
+        error={errors.rnc}
+        placeholder="1-01-00000-1"
+      />
+      <BusinessTypePicker value={form.businessType} onChange={(v) => set('businessType', v)} error={errors.tipoNegocio} />
       <label className={`check ${errors.aceptaTerminos ? 'has-error' : ''}`}>
         <input type="checkbox" checked={form.terminos} onChange={(e) => set('terminos', e.target.checked)} aria-invalid={!!errors.aceptaTerminos} />
         <span>

@@ -5,7 +5,7 @@ import { getDriver, withAuthBootstrap } from '../db/client.js';
 import { resetEnvForTests } from '../config/env.js';
 import { __resetSessionStatusForTests } from '../auth/session-status.js';
 import { signWebhook } from '../services/billing-providers.js';
-import { addStaff, api, bootApp, multipartBody, PASSWORD, platformAdminSession, refreshCookieFrom, register, shutdown } from './helpers.js';
+import { addStaff, api, bootApp, multipartBody, nextTestRnc, PASSWORD, platformAdminSession, refreshCookieFrom, register, shutdown } from './helpers.js';
 
 const WEBHOOK_SECRET = 'whsec_test_only_0123456789abcdef';
 Object.assign(process.env, {
@@ -22,8 +22,6 @@ let app: FastifyInstance;
 let admin: { token: string };
 let png: Buffer;
 let seq = 0;
-let rncSeq = 501_000_000;
-
 beforeAll(async () => {
   resetEnvForTests();
   app = await bootApp();
@@ -44,7 +42,7 @@ function applicant(over: Record<string, unknown> = {}) {
     email: `cliente${seq}.${Date.now()}@facilito.test`,
     telefono: '809-555-0101',
     razonSocial: `Farmacia Carla ${seq}`,
-    rnc: String(rncSeq++),
+    rnc: nextTestRnc(),
     tipoNegocio: 'Farmacia',
     referenciaPago: `TRX-${seq}`,
     aceptaTerminos: true,

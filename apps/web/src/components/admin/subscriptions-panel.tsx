@@ -58,6 +58,7 @@ interface PlanOption {
   id: string;
   nombre: string;
   precioMensualCentavos: number;
+  copilot?: boolean;
 }
 
 const EVENT_LABEL: Record<string, string> = {
@@ -607,7 +608,7 @@ function ActionModal({ sub, action, onClose, onDone }: { sub: SubDetail; action:
             <SelectInput label="Plan nuevo" value={planId} onChange={(e) => setPlanId(e.target.value)}>
               {plans.data.items.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.nombre} · {dop(p.precioMensualCentavos)}/mes
+                  {p.nombre} · {dop(p.precioMensualCentavos)}/mes{p.copilot ? ' · Copilot' : ''}
                 </option>
               ))}
             </SelectInput>

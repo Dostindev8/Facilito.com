@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateRncOrCedula } from './rnc.js';
 
 export const uuidSchema = z.string().uuid();
 
@@ -12,5 +13,10 @@ export const skuSchema = z.string().min(1).max(64);
 
 export const rncPlainSchema = z
   .string()
-  .regex(/^\d{9}$|^\d{11}$/, 'RNC must be 9 or 11 digits');
-// TODO: VERIFICAR EN VIVO — exact DGII RNC validation rules
+  .transform((s) => s.replace(/[\s-]/g, ''))
+  .superRefine((digits, ctx) => {
+    const v = validateRncOrCedula(digits);
+    if (!v.ok) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: v.error });
+    }
+  });

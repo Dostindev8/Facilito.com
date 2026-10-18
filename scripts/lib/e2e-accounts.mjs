@@ -115,7 +115,18 @@ export async function receiptPng() {
 }
 
 export const uniqueEmail = (tag) => `e2e.${tag}.${Date.now()}.${Math.floor(Math.random() * 1e6)}@facilito.test`;
-export const randomRnc = () => String(100000000 + Math.floor(Math.random() * 899999999));
+
+/** Valid 9-digit RNC with check digit (same algorithm as @facilito/domain forgeValidRnc). */
+export const randomRnc = () => {
+  const seed = Math.floor(Math.random() * 89_999_999);
+  const body = String(10_000_000 + seed).padStart(8, '0').slice(-8);
+  const weights = [7, 9, 8, 6, 5, 4, 3, 2];
+  let sum = 0;
+  for (let i = 0; i < 8; i++) sum += Number(body[i]) * weights[i];
+  const mod = sum % 11;
+  const check = mod === 0 ? 2 : mod === 1 ? 1 : 11 - mod;
+  return `${body}${check}`;
+};
 
 /** Checkout + receipt + admin approval. Returns the single-use invitation token; the caller decides who accepts it. */
 export async function approvedInvitation(base, adminAccessToken, tag = 'smoke') {
