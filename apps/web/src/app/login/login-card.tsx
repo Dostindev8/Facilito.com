@@ -170,6 +170,11 @@ function LoginForm({ login, onDone }: { login: ReturnType<typeof useAuth>['login
         <p className="auth-switch">
           ¿Aún no tienes cuenta? <Link href={site.subscribePath}>Elige un plan y suscríbete</Link>
         </p>
+        <p className="auth-switch auth-web">
+          <a href={site.marketingUrl} rel="noopener noreferrer">
+            Sitio web
+          </a>
+        </p>
         <p className="auth-note">
           ¿Ya pagaste? Cuando aprobemos tu pago te enviaremos un enlace para crear tu contraseña. Puedes ver el estado en{' '}
           <Link href={`${site.subscribePath}?ver=estado`}>tu solicitud</Link>.

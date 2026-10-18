@@ -1,6 +1,6 @@
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { authenticator } from 'otplib';
-import { newUuidsV7, type RoleCode } from '@facilito/domain';
+import { forgeValidRnc, newUuidsV7, type RoleCode } from '@facilito/domain';
 import { buildApp } from '../app.js';
 import { ensureSchema } from '../db/schema.js';
 import { resetDriverForTests, withAuthBootstrap, withPersona } from '../db/client.js';
@@ -15,6 +15,8 @@ export const PASSWORD = 'Segura12345';
 
 let rncSeq = 100_000_000;
 let emailSeq = 0;
+
+export const nextTestRnc = () => forgeValidRnc(rncSeq++);
 
 export async function bootApp(): Promise<FastifyInstance> {
   await resetDriverForTests();
@@ -76,7 +78,7 @@ export async function register(app: FastifyInstance, overrides: OwnerOverrides =
         email,
         passwordHash: ownerHash,
         razonSocial: overrides.razonSocial ?? `Colmado ${emailSeq}`,
-        rnc: overrides.rnc ?? String(rncSeq++),
+        rnc: overrides.rnc ?? nextTestRnc(),
         vertical: hasVertical ? (overrides.vertical ?? null) : 'colmado',
         tipoNegocio: overrides.tipoNegocio ? (businessTypeField.parse(overrides.tipoNegocio) ?? null) : null,
         instagram: overrides.instagram ? normalizeInstagram(overrides.instagram) : null,

@@ -113,7 +113,7 @@ test.describe('catálogo de planes y banner de estado', () => {
     await expect(page.locator('.form-alert.warn[role="alert"]')).toHaveCount(0);
   });
 
-  test('si fallan los planes, el error opaca el banner ver=estado', async ({ page }) => {
+  test('si fallan los planes, el catálogo local mantiene la UI y el banner ver=estado', async ({ page }) => {
     await page.route('**/api/v1/billing/plans', (r) =>
       r.fulfill({
         status: 503,
@@ -126,9 +126,9 @@ test.describe('catálogo de planes y banner de estado', () => {
       }),
     );
     await page.goto('/suscribirme?ver=estado');
-    await expect(page.locator('.form-alert.warn[role="alert"]')).toContainText(/catálogo de planes|no está disponible|falló/i);
-    await expect(page.getByText('no tiene una solicitud guardada')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /Reintentar/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Elegir Profesional' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: /desactualizada|solicitud guardada/i })).toBeVisible();
+    await expect(page.locator('.form-alert.warn[role="alert"]')).toHaveCount(0);
   });
 });
 

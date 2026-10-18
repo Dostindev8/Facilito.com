@@ -3,11 +3,14 @@
  * Pure functions with no dependencies so the browser bundle stays small.
  */
 
+import { OTHER_BUSINESS_TYPE_SLUG, allBusinessTypeOptions, type VerticalId } from './business-types.js';
+
+export type { VerticalId };
+
 export const BUSINESS_TYPE_MIN = 2;
 export const BUSINESS_TYPE_MAX = 60;
 
 export type BusinessTypeSource = 'catalog' | 'custom';
-export type VerticalId = 'colmado' | 'ferreteria' | 'farmacia';
 
 export interface BusinessTypeSuggestion {
   label: string;
@@ -17,26 +20,10 @@ export interface BusinessTypeSuggestion {
 
 export const DEFAULT_VERTICAL: VerticalId = 'colmado';
 
-export const BUSINESS_TYPE_SUGGESTIONS: readonly BusinessTypeSuggestion[] = [
-  { label: 'Colmado', vertical: 'colmado' },
-  { label: 'Minimarket', vertical: 'colmado' },
-  { label: 'Supermercado', vertical: 'colmado' },
-  { label: 'Ferretería', vertical: 'ferreteria' },
-  { label: 'Farmacia', vertical: 'farmacia' },
-  { label: 'Salón de belleza' },
-  { label: 'Barbería' },
-  { label: 'Restaurante' },
-  { label: 'Cafetería' },
-  { label: 'Panadería y repostería' },
-  { label: 'Taller mecánico' },
-  { label: 'Repuestos de vehículos' },
-  { label: 'Tienda de ropa' },
-  { label: 'Tienda de celulares' },
-  { label: 'Librería y papelería' },
-  { label: 'Distribuidora' },
-  { label: 'Car wash' },
-  { label: 'Consultorio' },
-];
+/** Flat catalog for combobox filter / resolve (excludes the "Otro" sentinel). */
+export const BUSINESS_TYPE_SUGGESTIONS: readonly BusinessTypeSuggestion[] = allBusinessTypeOptions()
+  .filter((o) => o.slug !== OTHER_BUSINESS_TYPE_SLUG)
+  .map((o) => ({ label: o.label, ...(o.vertical ? { vertical: o.vertical } : {}) }));
 
 const LEGACY_VERTICAL_LABEL: Record<VerticalId, string> = {
   colmado: 'Colmado',
@@ -71,7 +58,7 @@ export function findBusinessType(raw: string): BusinessTypeSuggestion | undefine
   return BUSINESS_TYPE_SUGGESTIONS.find((s) => foldText(s.label) === key);
 }
 
-export function filterBusinessTypes(query: string, limit = 8): BusinessTypeSuggestion[] {
+export function filterBusinessTypes(query: string, limit = 24): BusinessTypeSuggestion[] {
   const key = foldText(normalizeBusinessType(query));
   const list = key ? BUSINESS_TYPE_SUGGESTIONS.filter((s) => foldText(s.label).includes(key)) : BUSINESS_TYPE_SUGGESTIONS;
   return list.slice(0, limit);

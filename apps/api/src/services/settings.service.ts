@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { instagramUrl, resolveBusinessType, type RoleCode } from '@facilito/domain';
+import { instagramUrl, resolveBusinessType, rncPlainSchema, type RoleCode } from '@facilito/domain';
 import { withTenant, type Queryable } from '../db/client.js';
 import { appendAudit } from '../audit/append.js';
 import { AppError } from '../http/errors.js';
@@ -119,12 +119,7 @@ export const updateSettingsSchema = z
     nombreComercial: safeText(2, 200).optional(),
     tipoNegocio: businessTypeField.optional(),
     instagram: instagramField,
-    rnc: z
-      .string()
-      .transform((s) => s.replace(/[\s-]/g, ''))
-      // TODO: VERIFICAR EN VIVO — dígito verificador de RNC/cédula DGII.
-      .pipe(z.string().regex(/^\d{9}$|^\d{11}$/, 'RNC de 9 dígitos o cédula de 11'))
-      .optional(),
+    rnc: rncPlainSchema.optional(),
     /** Required when the business already issued comprobantes with its current RNC. */
     confirmRncChange: z.boolean().optional(),
     direccion: optionalText(300),

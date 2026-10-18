@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { businessTypeError, normalizeBusinessType, parseInstagram } from '@facilito/domain';
+import { businessTypeError, normalizeBusinessType, parseInstagram, rncPlainSchema, validateRdPhone } from '@facilito/domain';
 
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
@@ -43,20 +43,29 @@ export const optionalEmail = z
 export const optionalPhone = z
   .union([z.string(), z.null()])
   .optional()
-  .transform((s) => (s == null || s.trim() === '' ? null : s.trim()))
-  .pipe(
-    z
-      .string()
-      .regex(/^[+\d][\d\s()-]{6,20}$/, 'Teléfono inválido')
-      .nullable(),
-  );
+  .transform((s, ctx) => {
+    if (s == null || s.trim() === '') return null;
+    const v = s.trim();
+    const err = validateRdPhone(v);
+    if (err) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: err });
+      return z.NEVER;
+    }
+    return v;
+  });
 
 export const documentoDo = z
   .union([z.string(), z.null()])
   .optional()
-  .transform((s) => (s == null || s.trim() === '' ? null : s.replace(/[\s-]/g, '')))
-  // TODO: VERIFICAR EN VIVO — dígito verificador de RNC/cédula DGII.
-  .pipe(z.string().regex(/^\d{9}$|^\d{11}$/, 'RNC (9 dígitos) o cédula (11 dígitos)').nullable());
+  .transform((s, ctx) => {
+    if (s == null || s.trim() === '') return null;
+    const parsed = rncPlainSchema.safeParse(s);
+    if (!parsed.success) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: parsed.error.issues[0]?.message ?? 'RNC o cédula inválido' });
+      return z.NEVER;
+    }
+    return parsed.data;
+  });
 
 /** Free-text business type (2–60, letters/numbers/accents/&/-/.), normalized. Rules shared with the web form. */
 export const businessTypeField = z

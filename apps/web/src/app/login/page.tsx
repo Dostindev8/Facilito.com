@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { AuthLayout } from '@/components/auth/auth-layout';
+import { LoginIntro } from '@/components/auth/login-intro';
 import { LoginCard } from './login-card';
 
 export const metadata: Metadata = {
@@ -12,9 +13,11 @@ export const metadata: Metadata = {
 export default function LoginPage() {
   return (
     <AuthLayout>
-      <Suspense fallback={null}>
-        <LoginCard />
-      </Suspense>
+      <LoginIntro>
+        <Suspense fallback={null}>
+          <LoginCard />
+        </Suspense>
+      </LoginIntro>
     </AuthLayout>
   );
 }

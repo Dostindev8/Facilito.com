@@ -7,9 +7,11 @@ import {
   effectiveSubscriptionState,
   newUuidsV7,
   nextPeriodEnd,
+  plansForDbSeed,
   rncPlainSchema,
   SubscriptionTransitionError,
   transition,
+  validateRdPhone,
   type SubscriptionEvent,
   type SubscriptionState,
 } from '@facilito/domain';
@@ -130,47 +132,7 @@ async function useContext(q: Queryable, ctx: { persona: string; tenant?: string;
 
 /* ───────────── Public: plans and checkout ───────────── */
 
-const DEFAULT_PLANS: ReadonlyArray<{
-  id: string;
-  nombre: string;
-  descripcion: string;
-  precio_mensual_centavos: number;
-  max_usuarios: number;
-  max_productos: number | null;
-  copilot: boolean;
-  orden: number;
-}> = [
-  {
-    id: 'inicial',
-    nombre: 'Inicial',
-    descripcion: 'Ventas, facturación, inventario y reportes para un negocio que empieza.',
-    precio_mensual_centavos: 69000,
-    max_usuarios: 2,
-    max_productos: 500,
-    copilot: false,
-    orden: 1,
-  },
-  {
-    id: 'profesional',
-    nombre: 'Profesional',
-    descripcion: 'Todo lo de Inicial con más usuarios, más productos y el asistente Copilot.',
-    precio_mensual_centavos: 149000,
-    max_usuarios: 5,
-    max_productos: 5000,
-    copilot: true,
-    orden: 2,
-  },
-  {
-    id: 'negocio',
-    nombre: 'Negocio',
-    descripcion: 'Para negocios con varios empleados: productos ilimitados y prioridad en soporte.',
-    precio_mensual_centavos: 249000,
-    max_usuarios: 15,
-    max_productos: null,
-    copilot: true,
-    orden: 3,
-  },
-];
+const DEFAULT_PLANS = plansForDbSeed();
 
 function mapPlanRow(p: {
   id: string;
@@ -261,13 +223,13 @@ const checkoutSchema = z
     telefono: z
       .string()
       .trim()
-      .regex(/^[+\d][\d\s()-]{6,24}$/, 'Teléfono inválido')
+      .superRefine((v, ctx) => {
+        const err = validateRdPhone(v);
+        if (err) ctx.addIssue({ code: z.ZodIssueCode.custom, message: err });
+      })
       .optional(),
     razonSocial: safeText(2, 200),
-    rnc: z
-      .string()
-      .transform((s) => s.replace(/[\s-]/g, ''))
-      .pipe(rncPlainSchema),
+    rnc: rncPlainSchema,
     tipoNegocio: businessTypeField.optional(),
     referenciaPago: z.string().trim().max(120).optional(),
     metodo: z.literal('transferencia').default('transferencia'),
