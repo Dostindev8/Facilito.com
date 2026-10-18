@@ -3685,19 +3685,52 @@ textarea.input {
   }
 }
 
-/* ───────────── Login cinematic intro (4.0s) ───────────── */
+/* ───────────── Login cinematic intro v2 (~5.2s) ───────────── */
+:root {
+  --facilito-brand-green: #00a651;
+  --facilito-brand-orange: #f15a29;
+}
+
+/* Dissolve the auth-card chrome while splash owns the viewport.
+   Do NOT use visibility:hidden on .auth-card — it hides position:fixed
+   descendants (the splash) via inheritance. */
+html.login-intro-active .auth-card,
+.auth-card:has(.login-intro-boot),
+.auth-card:has(.login-intro) {
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0 !important;
+}
+
+.login-intro-boot {
+  min-height: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
 .login-intro {
+  --facilito-brand-green: #00a651;
+  --facilito-brand-orange: #f15a29;
   position: fixed;
   inset: 0;
   z-index: 80;
   display: grid;
   place-items: center;
   overflow: hidden;
-  animation: login-intro-fade-in 0.4s ease-out both;
+  min-height: 100dvh;
+  padding:
+    max(16px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+  animation: login-intro-fade-in 0.35s ease-out both;
 }
 
 .login-intro.leaving {
-  animation: login-intro-fade-out 0.6s ease-in both;
+  animation: login-intro-fade-out 0.75s ease-in both;
 }
 
 .login-intro-bg {
@@ -3719,25 +3752,38 @@ textarea.input {
     linear-gradient(180deg, rgba(26, 43, 60, 0.35) 0%, rgba(0, 166, 81, 0.18) 55%, rgba(26, 43, 60, 0.45) 100%);
 }
 
+.login-intro-glow {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: min(420px, 80vw);
+  height: min(420px, 80vw);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 166, 81, 0.45) 0%, rgba(241, 90, 41, 0.12) 42%, transparent 70%);
+  opacity: 0;
+  animation: login-intro-glow-in 0.4s ease-out forwards;
+  pointer-events: none;
+}
+
 .login-intro-center {
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: clamp(16px, 3vw, 28px);
   padding: 24px;
-  width: min(100%, 420px);
+  width: min(100%, 440px);
 }
 
 .login-intro-logo {
-  width: clamp(140px, 22vw, 220px);
-  height: clamp(140px, 22vw, 220px);
+  width: clamp(120px, 28vw, 220px);
+  height: clamp(120px, 28vw, 220px);
   display: grid;
   place-items: center;
-  opacity: 0;
-  transform: translateY(12px);
-  animation: login-intro-logo-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.4s forwards;
+  filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.28));
+  will-change: transform, opacity;
 }
 
 .login-intro-logo .logo-mark,
@@ -3746,13 +3792,16 @@ textarea.input {
   height: 100% !important;
   max-width: none;
   object-fit: contain;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
+/* Progress track: only mounted while showBar — never before logo phase. */
 .login-intro-bar {
-  width: min(240px, 70vw);
+  width: min(300px, 78vw);
   height: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.35);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.25);
   overflow: hidden;
 }
 
@@ -3761,35 +3810,39 @@ textarea.input {
   height: 100%;
   width: 100%;
   transform-origin: left center;
-  transform: scaleX(0.02);
-  background: linear-gradient(90deg, #00a651 0%, #f5a623 100%);
+  transform: scaleX(0);
+  background: linear-gradient(90deg, var(--facilito-brand-green) 0%, var(--facilito-brand-orange) 100%);
   will-change: transform;
+}
+
+.login-intro-bar.is-complete {
+  animation: login-intro-bar-pulse 0.35s ease-out;
 }
 
 .login-intro-copy {
   text-align: center;
   color: #fff;
-  opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.45s ease, transform 0.45s ease;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
 }
 
 .login-intro-copy.on {
   opacity: 1;
-  transform: translateY(0);
 }
 
 .login-intro-title {
   margin: 0;
-  font-size: clamp(1.35rem, 3vw, 1.75rem);
+  font-size: clamp(1.25rem, 3.6vw, 1.85rem);
   font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .login-intro-tag {
-  margin: 6px 0 0;
-  font-size: 0.95rem;
-  opacity: 0.92;
+  margin: 8px 0 0;
+  font-size: clamp(0.9rem, 2.4vw, 1.05rem);
+  font-weight: 400;
+  opacity: 0.85;
+  line-height: 1.35;
 }
 
 .login-intro-skip {
@@ -3800,7 +3853,8 @@ textarea.input {
   border: 0;
   background: rgba(255, 255, 255, 0.18);
   color: #fff;
-  padding: 8px 14px;
+  padding: 10px 16px;
+  min-height: 44px;
   border-radius: 999px;
   font-size: 0.85rem;
   cursor: pointer;
@@ -3813,14 +3867,41 @@ textarea.input {
 }
 
 .login-panel-enter {
-  animation: login-panel-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: login-panel-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Login CTA: brand green with AA contrast on white (not muted shell green). */
+.auth-card .btn-primary:not(:disabled) {
+  background: var(--facilito-brand-green, #00a651);
+  box-shadow: 0 8px 20px rgba(0, 166, 81, 0.32);
+}
+
+.auth-card .btn-primary:not(:disabled):hover {
+  background: #009345;
+}
+
+.auth-card {
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  width: min(100%, 440px);
+}
+
+.auth-brand {
+  margin-bottom: 12px;
+}
+
+.auth-brand .logo {
+  justify-content: center;
 }
 
 .login-intro.reduced .login-intro-logo,
-.login-intro.reduced .login-intro-bg-img {
+.login-intro.reduced .login-intro-bg-img,
+.login-intro.reduced .login-intro-glow {
   animation: none;
   opacity: 1;
   transform: none;
+  will-change: auto;
 }
 
 @keyframes login-intro-fade-in {
@@ -3838,16 +3919,33 @@ textarea.input {
     transform: scale(1);
   }
 }
-@keyframes login-intro-logo-in {
+@keyframes login-intro-glow-in {
+  from {
+    opacity: 0;
+  }
   to {
-    opacity: 1;
-    transform: translateY(0);
+    opacity: 0.6;
+  }
+}
+@keyframes login-intro-bar-pulse {
+  0% {
+    transform: scaleY(1);
+  }
+  45% {
+    transform: scaleY(1.8);
+  }
+  100% {
+    transform: scaleY(1);
   }
 }
 @keyframes login-panel-in {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(28px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -3855,11 +3953,14 @@ textarea.input {
   .login-intro,
   .login-intro-logo,
   .login-intro-bg-img,
-  .login-panel-enter {
+  .login-intro-glow,
+  .login-panel-enter,
+  .login-intro-bar.is-complete {
     animation: none !important;
   }
-  .login-intro-copy {
-    transition: opacity 0.2s ease;
+  .login-intro-logo,
+  .login-intro-bar > span {
+    will-change: auto;
   }
 }
 
