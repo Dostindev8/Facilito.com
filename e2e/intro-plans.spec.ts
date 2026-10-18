@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { randomRnc, uniqueEmail } from './helpers';
 
 test.describe('intro login + planes + tipo de negocio', () => {
-  test('intro 4s se puede saltar y deja foco en el login', async ({ page }) => {
+  test('intro v2 se puede saltar y deja foco en el login', async ({ page }) => {
     await page.addInitScript(() => {
       try {
         sessionStorage.removeItem('facilito:intro-seen');
@@ -30,8 +30,35 @@ test.describe('intro login + planes + tipo de negocio', () => {
       }
     });
     await page.goto('/login');
-    await expect(page.getByRole('heading', { name: /^Iniciar sesión$/i })).toBeVisible({ timeout: 2500 });
+    await expect(page.getByRole('heading', { name: /^Iniciar sesión$/i })).toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.login-intro-bar')).toHaveCount(0);
     await ctx.close();
+  });
+
+  test('intro v2: sin barra blanca antes del logo (0–400ms)', async ({ page }) => {
+    await page.addInitScript(() => {
+      try {
+        sessionStorage.removeItem('facilito:intro-seen');
+      } catch {
+        /* ignore */
+      }
+    });
+    await page.goto('/login');
+    // Immediately after paint: track must not exist (logo phase starts at 400ms).
+    await expect(page.locator('.login-intro-bar')).toHaveCount(0);
+    await page.waitForTimeout(250);
+    await expect(page.locator('.login-intro-bar')).toHaveCount(0);
+    // After mount window, bar may appear with logo — never alone as a white strip pre-logo.
+    await page.waitForTimeout(400);
+    const bar = page.locator('.login-intro-bar');
+    const logo = page.locator('.login-intro-logo');
+    if ((await bar.count()) > 0) {
+      await expect(logo).toBeVisible();
+    }
+    // After handoff (~5.2s) splash nodes are gone.
+    await expect(page.getByRole('heading', { name: /^Iniciar sesión$/i })).toBeVisible({ timeout: 7000 });
+    await expect(page.locator('.login-intro-bar')).toHaveCount(0);
+    await expect(page.locator('.login-intro')).toHaveCount(0);
   });
 
   test('elegir plan actualiza el resumen y el picker de tipo tiene Otro', async ({ page }) => {

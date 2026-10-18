@@ -99,7 +99,6 @@ function LoginForm({ login, onDone }: { login: ReturnType<typeof useAuth>['login
     <>
       <div className="auth-brand">
         <Logo size={56} priority />
-        <span className="auth-brand-name">Facilito</span>
       </div>
       <h1 className="auth-title">Iniciar sesión</h1>
       <p className="lead">Entra a tu negocio y continúa donde lo dejaste.</p>
