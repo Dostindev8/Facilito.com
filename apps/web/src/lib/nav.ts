@@ -53,7 +53,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/inicio', label: 'Inicio', icon: House, ready: true },
       { href: '/clientes', label: 'Clientes', icon: Users, ready: true },
-      { href: '/inventario', label: 'Productos e inventario', icon: Package, ready: true },
+      { href: '/inventario', label: 'Inventario', icon: Package, ready: true },
       { href: '/modulos/crm', label: 'CRM', icon: Contact, ready: false, soonDate: '2026-12-15' },
       { href: '/modulos/automatizacion', label: 'Automatización', icon: Bot, ready: false, soonDate: '2026-12-15' },
     ],
