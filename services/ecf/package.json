@@ -14,7 +14,7 @@
     "@facilito/domain": "workspace:*",
     "dotenv": "^16.4.7",
     "ioredis": "^5.6.0",
-    "pg": "^8.14.1"
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
