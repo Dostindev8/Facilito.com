@@ -2,49 +2,43 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
-import {
-  ChartColumn,
-  ChevronRight,
-  CreditCard,
-  FileText,
-  Headphones,
-  House,
-  MapPin,
-  Package,
-  Settings,
-  ShieldCheck,
-  ShoppingCart,
-  Truck,
-  Users,
-  X,
-} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ChevronRight, Headphones, MapPin, ShieldCheck, X } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { Modal } from '@/components/ui/primitives';
 import { useAuth } from '@/lib/auth';
-
-export const NAV = [
-  { href: '/inicio', label: 'Inicio', icon: House },
-  { href: '/ventas', label: 'Ventas', icon: ShoppingCart },
-  { href: '/inventario', label: 'Inventario', icon: Package },
-  { href: '/facturacion', label: 'Facturación', icon: FileText },
-  { href: '/clientes', label: 'Clientes', icon: Users },
-  { href: '/proveedores', label: 'Proveedores', icon: Truck },
-  { href: '/reportes', label: 'Reportes', icon: ChartColumn },
-  { href: '/configuracion', label: 'Configuración', icon: Settings },
-] as const;
-
-const PLATFORM_NAV = { href: '/admin', label: 'Admin plataforma', icon: ShieldCheck } as const;
-const BILLING_NAV = { href: '/suscripcion', label: 'Suscripción', icon: CreditCard } as const;
+import { featureEnabled } from '@/lib/features';
+import { NAV_GROUPS, type NavItem } from '@/lib/nav';
 
 const SUPPORT_URL = process.env.NEXT_PUBLIC_SUPPORT_URL;
+
+function isActive(pathname: string, item: NavItem) {
+  const base = item.match ?? item.href.split('?')[0]!;
+  if (base === '/inicio') return pathname === '/inicio';
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const { user } = useAuth();
   const [support, setSupport] = useState(false);
-  const billing = !user?.platformAdmin && (user?.rol === 'owner' || user?.rol === 'manager') ? [BILLING_NAV] : [];
-  const items = user?.platformAdmin ? [PLATFORM_NAV, ...NAV] : [...NAV, ...billing];
+  const [supportCollapsed, setSupportCollapsed] = useState(false);
+
+  const groups = useMemo(() => {
+    const showPreview = featureEnabled('navPreview');
+    return NAV_GROUPS.map((g) => {
+      let items = g.items.filter((i) => i.ready || showPreview);
+      if (g.id === 'admin') {
+        items = items.filter((i) => {
+          if (i.href === '/suscripcion') {
+            return !user?.platformAdmin && (user?.rol === 'owner' || user?.rol === 'manager');
+          }
+          return true;
+        });
+      }
+      return { ...g, items };
+    }).filter((g) => g.items.length > 0);
+  }, [user?.platformAdmin, user?.rol]);
 
   return (
     <>
@@ -60,36 +54,77 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             </button>
           )}
         </div>
-        <nav className="nav">
-          {items.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(`${href}/`);
-            return (
+
+        <nav className="nav nav-grouped">
+          {user?.platformAdmin && (
+            <div className="nav-group">
+              <p className="nav-group-label">Plataforma</p>
               <Link
-                key={href}
-                href={href}
-                className={`nav-item ${active ? 'active' : ''}`}
-                aria-current={active ? 'page' : undefined}
-                title={label}
+                href="/admin"
+                className={`nav-item ${pathname.startsWith('/admin') ? 'active' : ''}`}
+                aria-current={pathname.startsWith('/admin') ? 'page' : undefined}
                 onClick={onClose}
               >
-                <Icon size={20} aria-hidden />
-                <span className="nav-label">{label}</span>
+                <ShieldCheck size={20} aria-hidden />
+                <span className="nav-label">Admin plataforma</span>
                 <ChevronRight size={16} className="chev" aria-hidden />
               </Link>
-            );
-          })}
+            </div>
+          )}
+
+          {groups.map((group) => (
+            <div key={group.id} className="nav-group">
+              <p className="nav-group-label">{group.label}</p>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(pathname, item);
+                const soon = !item.ready;
+                return (
+                  <Link
+                    key={`${group.id}-${item.href}-${item.label}`}
+                    href={item.href}
+                    className={`nav-item ${active ? 'active' : ''} ${soon ? 'nav-item-soon' : ''}`}
+                    aria-current={active ? 'page' : undefined}
+                    title={soon ? `${item.label} · Próximamente` : item.label}
+                    onClick={onClose}
+                  >
+                    <Icon size={20} aria-hidden />
+                    <span className="nav-label">{item.label}</span>
+                    {soon && <span className="nav-soon-badge">Pronto</span>}
+                    <ChevronRight size={16} className="chev" aria-hidden />
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
-        <div className="support-card">
-          <strong>Tu negocio en buenas manos</strong>
-          <p>¿Tienes dudas? Nuestro equipo te ayuda a sacarle el máximo a Facilito.</p>
-          {SUPPORT_URL ? (
-            <a className="btn btn-primary btn-sm" href={SUPPORT_URL} target="_blank" rel="noopener noreferrer">
-              <Headphones size={16} /> Soporte
-            </a>
-          ) : (
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => setSupport(true)}>
-              <Headphones size={16} /> Soporte
+
+        <div className={`support-card ${supportCollapsed ? 'collapsed' : ''}`}>
+          <div className="support-card-head">
+            <strong>Tu negocio en buenas manos</strong>
+            <button
+              type="button"
+              className="support-collapse"
+              onClick={() => setSupportCollapsed((c) => !c)}
+              aria-expanded={!supportCollapsed}
+              aria-label={supportCollapsed ? 'Expandir soporte' : 'Contraer soporte'}
+            >
+              {supportCollapsed ? '+' : '−'}
             </button>
+          </div>
+          {!supportCollapsed && (
+            <>
+              <p>¿Tienes dudas? Nuestro equipo te ayuda a sacarle el máximo a Facilito.</p>
+              {SUPPORT_URL ? (
+                <a className="btn btn-primary btn-sm" href={SUPPORT_URL} target="_blank" rel="noopener noreferrer">
+                  <Headphones size={16} /> Soporte
+                </a>
+              ) : (
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => setSupport(true)}>
+                  <Headphones size={16} /> Soporte
+                </button>
+              )}
+            </>
           )}
         </div>
         <div className="sidebar-foot">
@@ -99,23 +134,25 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <span>Tu negocio, más simple.</span>
         </div>
       </aside>
-      <Modal open={support} onClose={() => setSupport(false)} title="Soporte Facilito" subtitle="Logic Code Spot" size="sm">
-        <div className="stack">
-          <p>Estas guías rápidas resuelven las dudas más comunes:</p>
-          <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6 }}>
-            <li>
-              <strong>Inventario:</strong> importa tus productos desde un CSV con la plantilla en Inventario → Importar.
-            </li>
-            <li>
-              <strong>Facturas:</strong> configura tus secuencias NCF en Configuración → Comprobantes antes de emitir con valor fiscal.
-            </li>
-            <li>
-              <strong>Anulaciones:</strong> una factura anulada conserva su número y devuelve el stock automáticamente.
-            </li>
-          </ul>
-          <p className="muted">El canal de contacto directo se habilitará cuando el negocio configure su línea de soporte.</p>
-        </div>
+
+      <Modal open={support} onClose={() => setSupport(false)} title="Soporte Facilito" size="sm">
+        <p className="muted" style={{ marginBottom: 12 }}>
+          Escríbenos y te ayudamos con tu cuenta, facturación o configuración del negocio.
+        </p>
+        <p>
+          Correo:{' '}
+          <a href="mailto:soporte@logiccodespot.com" className="link-btn">
+            soporte@logiccodespot.com
+          </a>
+        </p>
       </Modal>
     </>
   );
 }
+
+/** @deprecated Prefer NAV_GROUPS — kept for any external import of flat NAV. */
+export const NAV = NAV_GROUPS.flatMap((g) => g.items.filter((i) => i.ready)).map(({ href, label, icon }) => ({
+  href,
+  label,
+  icon,
+}));

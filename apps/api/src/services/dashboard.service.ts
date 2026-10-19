@@ -102,6 +102,37 @@ export async function dashboard(tenantId: string, rol: RoleCode, query: unknown)
       [tenantId],
     );
 
+    const bajo = await lowStockTx(q, tenantId, 6);
+    const ncfRows = await q.query<{
+      tipo: string;
+      restantes: string;
+      siguiente: string;
+      hasta: string;
+      vence: Date | string | null;
+    }>(
+      `SELECT tipo, greatest(hasta - siguiente + 1, 0)::text AS restantes, siguiente::text, hasta::text, vence
+         FROM app.ncf_secuencia WHERE tenant_id=$1 AND activo = true
+        ORDER BY tipo`,
+      [tenantId],
+    );
+
+    const cobrado = await q.query<{ cobrado: string; pendientes: number }>(
+      `SELECT round(coalesce(sum(total) FILTER (WHERE estado = 'pagada'),0),2)::text AS cobrado,
+              count(*) FILTER (WHERE estado = 'pendiente')::int AS pendientes
+         FROM app.factura
+        WHERE tenant_id=$1
+          AND fecha_emision >= ($2::date)::timestamp AT TIME ZONE '${TZ}'
+          AND fecha_emision <  ($2::date + 1)::timestamp AT TIME ZONE '${TZ}'`,
+      [tenantId, day],
+    );
+
+    const stockCritico = bajo.filter((p) => Number(p.stockActual) <= 0).length;
+    const stockBajo = bajo.length;
+    const ncfMin = ncfRows.rows.reduce((m, r) => Math.min(m, Number(r.restantes)), Number.POSITIVE_INFINITY);
+    const saludInventario = stockCritico > 0 ? 40 : stockBajo > 0 ? 70 : 95;
+    const saludFiscal = !Number.isFinite(ncfMin) ? 60 : ncfMin <= 20 ? 35 : ncfMin <= 100 ? 70 : 95;
+    const saludNegocio = Math.round((saludInventario + saludFiscal) / 2);
+
     return {
       fecha: day,
       kpis: {
@@ -121,7 +152,7 @@ export async function dashboard(tenantId: string, rol: RoleCode, query: unknown)
         estado: r.estado,
       })),
       masVendidos: top.rows.map((t) => ({ productoId: t.producto_id, nombre: t.nombre, sku: t.sku, unidades: t.unidades, ingresos: t.ingresos })),
-      bajoStock: (await lowStockTx(q, tenantId, 6)).map((p) => ({
+      bajoStock: bajo.map((p) => ({
         id: p.id,
         nombre: p.nombre,
         sku: p.sku,
@@ -137,6 +168,30 @@ export async function dashboard(tenantId: string, rol: RoleCode, query: unknown)
         estado: negocio.estado,
         productosActivos: Number(counts.rows[0]?.productos ?? 0),
         clientes: Number(counts.rows[0]?.clientes ?? 0),
+      },
+      /** Additive ERP+ fields — older clients ignore them. */
+      ingresosCobrados: cobrado.rows[0]?.cobrado ?? '0',
+      facturasPendientes: Number(cobrado.rows[0]?.pendientes ?? 0),
+      ncfSecuencias: ncfRows.rows.map((s) => {
+        const hasta = Number(s.hasta);
+        const siguiente = Number(s.siguiente);
+        const restantes = Number(s.restantes);
+        const used = Math.max(0, siguiente - 1);
+        return {
+          tipo: s.tipo,
+          restantes,
+          siguiente,
+          hasta,
+          vence: s.vence ? new Date(s.vence).toISOString().slice(0, 10) : null,
+          consumoPct: hasta > 0 ? Math.min(100, Math.round((used / hasta) * 100)) : 0,
+        };
+      }),
+      salud: {
+        negocio: saludNegocio,
+        inventario: saludInventario,
+        fiscal: saludFiscal,
+        stockCritico,
+        stockBajo,
       },
     };
   });

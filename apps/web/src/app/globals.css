@@ -4115,3 +4115,145 @@ html.login-intro-active .auth-card,
 .business-type-picker + .field {
   margin-top: 12px;
 }
+
+/* -- ERP+ F1: nav groups, command palette, profile, health -- */
+.nav-grouped { gap: 14px; flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; }
+.nav-group { display: flex; flex-direction: column; gap: 2px; }
+.nav-group-label {
+  margin: 8px 8px 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.nav-item-soon { opacity: 0.92; }
+.nav-soon-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--orange-600);
+  background: var(--orange-50);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.support-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.support-collapse {
+  border: 0; background: transparent; color: var(--muted); font-size: 1.1rem; line-height: 1;
+  cursor: pointer; padding: 0 4px; border-radius: 6px;
+}
+.support-collapse:hover { background: var(--green-100); color: var(--green); }
+.support-card.collapsed { padding: 12px 14px; }
+
+.header-clock {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-variant-numeric: tabular-nums; font-size: 0.85rem; color: var(--ink-2);
+  white-space: nowrap;
+}
+.header-clock-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+  box-shadow: 0 0 0 3px var(--green-50);
+}
+
+.cmdk-backdrop {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(21, 35, 58, 0.35);
+  display: grid; place-items: start center; padding: 12vh 16px 16px;
+}
+.cmdk {
+  width: min(640px, 100%); background: #fff; border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); border: 1px solid var(--line); overflow: hidden;
+}
+.cmdk-input-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.cmdk-input-row .input { border: 0; box-shadow: none; flex: 1; padding-left: 0; }
+.cmdk-kbd, .cmdk-foot kbd {
+  font-size: 0.72rem; border: 1px solid var(--line); border-radius: 6px;
+  padding: 2px 6px; background: var(--bg); color: var(--muted);
+}
+.cmdk-list { max-height: min(50vh, 360px); overflow: auto; padding: 6px; }
+.cmdk-item {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 0; background: transparent; border-radius: 10px;
+  text-align: left; cursor: pointer; color: var(--ink);
+}
+.cmdk-item.active, .cmdk-item:hover { background: var(--green-50); }
+.cmdk-kind {
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--muted); min-width: 72px;
+}
+.cmdk-label { flex: 1; font-weight: 600; }
+.cmdk-empty { padding: 20px; display: flex; gap: 8px; align-items: center; }
+.cmdk-foot {
+  display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 14px;
+  border-top: 1px solid var(--line); font-size: 0.75rem; color: var(--muted);
+}
+
+.profile-panel { width: min(340px, calc(100vw - 24px)); }
+.profile-head { display: flex !important; flex-direction: row !important; align-items: flex-start !important; gap: 12px !important; }
+.avatar-lg { width: 48px; height: 48px; font-size: 1rem; }
+.role-pill {
+  display: inline-block; margin-top: 4px; font-size: 0.7rem; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px; background: var(--green-50); color: var(--green-700);
+}
+.role-pill.platform { background: var(--purple-50); color: var(--purple); }
+.profile-section { padding: 10px 12px 4px; border-bottom: 1px solid var(--line); }
+.profile-section-label {
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 6px;
+}
+.profile-activity { list-style: none; margin: 0; padding: 0; }
+.profile-activity .dropdown-item { width: 100%; }
+.profile-link {
+  display: inline-block; margin: 4px 0 8px; font-size: 0.85rem; font-weight: 600; color: var(--green-600);
+}
+.profile-empty { font-size: 0.85rem; margin: 0 0 8px; }
+.profile-meta-block {
+  display: grid; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line);
+  font-size: 0.82rem;
+}
+.profile-meta-block span { display: flex; align-items: center; gap: 4px; }
+.profile-meta-block strong { display: block; }
+
+.health-strip {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center;
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px 18px; margin-bottom: 16px; box-shadow: var(--shadow-sm);
+}
+.health-score {
+  display: flex; flex-direction: column; align-items: center; min-width: 88px;
+  padding: 8px 12px; border-radius: 14px; background: var(--green-50);
+}
+.health-score strong { font-size: 1.75rem; color: var(--green-700); line-height: 1; }
+.health-score span { font-size: 0.72rem; color: var(--muted); text-align: center; }
+.health-meters { display: grid; gap: 10px; }
+.health-meters > div { display: grid; grid-template-columns: 100px 1fr auto; gap: 10px; align-items: center; }
+.meter {
+  height: 8px; border-radius: 999px; background: var(--line-2); overflow: hidden;
+}
+.meter i { display: block; height: 100%; background: var(--green); border-radius: inherit; }
+.meter-blue i { background: var(--blue); }
+.health-extras { display: flex; flex-direction: column; gap: 8px; min-width: 140px; }
+.health-extras strong { display: block; font-variant-numeric: tabular-nums; }
+
+.ncf-panel { margin-bottom: 16px; }
+.ncf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.ncf-item {
+  padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg);
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.soon-wrap { max-width: 720px; }
+.soon-card { display: flex; flex-direction: column; gap: 12px; }
+.soon-badge {
+  display: inline-flex; align-items: center; gap: 8px; width: fit-content;
+  padding: 6px 10px; border-radius: 999px; background: var(--orange-50); color: var(--orange-600);
+  font-size: 0.85rem; font-weight: 600;
+}
+.soon-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+
+@media (max-width: 900px) {
+  .health-strip { grid-template-columns: 1fr; }
+  .health-meters > div { grid-template-columns: 1fr; gap: 4px; }
+  .header-clock { display: none; }
+}
