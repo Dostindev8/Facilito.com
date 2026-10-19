@@ -58,7 +58,7 @@ export function SearchBox() {
         id="global-search"
         className="input"
         type="search"
-        placeholder="Buscar productos, clientes, ventas..."
+        placeholder="Buscar… (⌘/Ctrl+K para todo)"
         autoComplete="off"
         value={q}
         maxLength={100}

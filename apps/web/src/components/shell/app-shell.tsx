@@ -7,13 +7,16 @@ import { useAuth } from '@/lib/auth';
 import { useOnline } from '@/lib/hooks';
 import { AppLoadingLogo } from '@/components/brand/app-loading-logo';
 import { ErrorState } from '@/components/ui/primitives';
+import { APP_VERSION } from '@/lib/app-version';
 import { Sidebar } from './sidebar';
 import { SearchBox } from './search-box';
 import { NotificationsMenu } from './notifications';
 import { ProfileMenu } from './profile-menu';
 import { SubscriptionBanner } from './subscription-banner';
+import { CommandPalette } from './command-palette';
+import { HeaderClock } from './header-clock';
 
-export const APP_VERSION = '1.0.0';
+export { APP_VERSION };
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { status, user, sessionError, retrySession } = useAuth();
@@ -78,6 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
           <SearchBox />
           <div className="header-actions">
+            <HeaderClock />
             <NotificationsMenu tenantId={user.tenantId} />
             <ProfileMenu user={user} />
           </div>
@@ -90,6 +94,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
         <footer className="app-footer">Facilito by Logic Code Spot · v{APP_VERSION}</footer>
       </div>
+      <CommandPalette />
     </div>
   );
 }

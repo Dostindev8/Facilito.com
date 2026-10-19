@@ -43,6 +43,11 @@ interface Dashboard {
   masVendidos: Array<{ productoId: string; nombre: string; sku: string; unidades: string; ingresos: string }>;
   bajoStock: Array<{ id: string; nombre: string; sku: string; stockActual: string; stockMin: string; unidad: string; estado: string }>;
   negocio: { nombre: string; rnc: string | null; ubicacion: string; estado: string; productosActivos: number; clientes: number };
+  /** ERP+ additive (optional for older API). */
+  ingresosCobrados?: string;
+  facturasPendientes?: number;
+  ncfSecuencias?: Array<{ tipo: string; restantes: number; siguiente: number; hasta: number; vence: string | null; consumoPct: number }>;
+  salud?: { negocio: number; inventario: number; fiscal: number; stockCritico: number; stockBajo: number };
 }
 
 type TableTab = 'recientes' | 'top' | 'bajo';
@@ -145,6 +150,80 @@ export default function DashboardPage() {
               </>
             )}
           </section>
+
+          {data?.salud && (
+            <section className="health-strip" aria-label="Salud del negocio">
+              <div className="health-score">
+                <strong>{data.salud.negocio}</strong>
+                <span>Salud del negocio</span>
+              </div>
+              <div className="health-meters">
+                <div>
+                  <span>Inventario</span>
+                  <div className="meter">
+                    <i style={{ width: `${data.salud.inventario}%` }} />
+                  </div>
+                  <small>
+                    {data.salud.stockCritico > 0
+                      ? `${data.salud.stockCritico} agotados`
+                      : data.salud.stockBajo > 0
+                        ? `${data.salud.stockBajo} bajo mínimo`
+                        : 'OK'}
+                  </small>
+                </div>
+                <div>
+                  <span>Fiscal / NCF</span>
+                  <div className="meter meter-blue">
+                    <i style={{ width: `${data.salud.fiscal}%` }} />
+                  </div>
+                  <small>{data.ncfSecuencias?.length ? `${data.ncfSecuencias.length} secuencias` : 'Configura NCF'}</small>
+                </div>
+              </div>
+              {(data.ingresosCobrados !== undefined || data.facturasPendientes !== undefined) && (
+                <div className="health-extras">
+                  <div>
+                    <span className="muted">Ingresos cobrados (día)</span>
+                    <strong>{money(data.ingresosCobrados ?? '0')}</strong>
+                  </div>
+                  <div>
+                    <span className="muted">Facturas pendientes</span>
+                    <strong>{data.facturasPendientes ?? 0}</strong>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
+          {data?.ncfSecuencias && data.ncfSecuencias.length > 0 && (
+            <section className="card ncf-panel" aria-labelledby="ncf-title">
+              <div className="card-header">
+                <div>
+                  <h2 id="ncf-title">Secuencias NCF</h2>
+                  <span className="card-sub">Disponibles y consumo — sin tocar la emisión fiscal</span>
+                </div>
+                <Link href="/configuracion?tab=comprobantes" className="link-btn">
+                  Configurar <ArrowRight size={16} />
+                </Link>
+              </div>
+              <div className="ncf-grid">
+                {data.ncfSecuencias.map((s) => (
+                  <div key={s.tipo} className="ncf-item">
+                    <div className="row-between">
+                      <strong className="text-green">{s.tipo}</strong>
+                      <span>{s.restantes} disponibles</span>
+                    </div>
+                    <div className="meter">
+                      <i style={{ width: `${s.consumoPct}%` }} />
+                    </div>
+                    <small className="muted">
+                      Siguiente {s.siguiente} · Hasta {s.hasta}
+                      {s.vence ? ` · Vence ${dateLong(s.vence)}` : ''}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <div className="dash-grid">
             <div className="dash-main">
